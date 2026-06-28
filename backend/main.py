@@ -179,7 +179,9 @@ async def history_by_hash(file_hash: str):
 
 _static = Path(__file__).parent / "static"
 if _static.exists():
+    
     # Mount /assets so Vite-built JS/CSS chunks resolve correctly
+    
     _assets = _static / "assets"
     if _assets.exists():
         app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
