@@ -68,7 +68,6 @@ def _report_to_dict(report: ProvenanceReport) -> dict:
     return d
 
 # Routes
-# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health():
