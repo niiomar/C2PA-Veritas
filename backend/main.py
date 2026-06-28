@@ -32,7 +32,7 @@ CORS_ORIGINS = [o.strip() for o in os.getenv(
 
 API_KEY = os.getenv("API_KEY", "").strip()
 
-# Auth
+# Authentication
 
 from fastapi import Header, status
 
@@ -67,8 +67,6 @@ def _report_to_dict(report: ProvenanceReport) -> dict:
     d["status"] = report.status.value
     return d
 
-
-# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
