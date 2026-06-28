@@ -33,6 +33,7 @@ CORS_ORIGINS = [o.strip() for o in os.getenv(
 API_KEY = os.getenv("API_KEY", "").strip()
 
 # Auth
+
 from fastapi import Header, status
 
 async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-KEY")):
@@ -40,10 +41,8 @@ async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-A
         return
     if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key.")
-
-# ---------------------------------------------------------------------------
+        
 # App
-# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,10 +60,7 @@ app.add_middleware(
     allow_headers     = ["Content-Type", "X-API-KEY"],
 )
 
-
-# ---------------------------------------------------------------------------
 # Serialisation helper (dataclasses → JSON-safe dict)
-# ---------------------------------------------------------------------------
 
 def _report_to_dict(report: ProvenanceReport) -> dict:
     d = dataclasses.asdict(report)
