@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+backend/.env
+frontend/.env
+backend/static/
+backend/audit_log.db
+backend/data/
+node_modules/
+frontend/dist/
