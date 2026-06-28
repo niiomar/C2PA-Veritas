@@ -10,7 +10,7 @@ ARG VITE_API_KEY
 ENV VITE_API_KEY=${VITE_API_KEY}
 RUN npm run build
 
-# ── Stage 2: backend runtime ────────────────────────────────────────────────
+# Stage 2: backend runtime
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
