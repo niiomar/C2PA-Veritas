@@ -1,6 +1,6 @@
 """
 C2PA Manifest Signer
-=====================
+
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 
