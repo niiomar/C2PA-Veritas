@@ -1,6 +1,6 @@
 """
 C2PA Manifest Extractor and Validator
-======================================
+
 Core logic for reading C2PA manifests from media files, validating
 signature chains, extracting edit history timelines, and detecting
 stripped/absent manifests.
@@ -20,11 +20,7 @@ import c2pa
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
 # Result types
-# ---------------------------------------------------------------------------
-
 class ProvenanceStatus(str, Enum):
     VALID            = "VALID"            # Manifest present, signature valid
     INVALID          = "INVALID"          # Manifest present but signature fails
@@ -87,11 +83,7 @@ DISCLAIMER = (
     "many legitimate media files predate C2PA adoption."
 )
 
-
-# ---------------------------------------------------------------------------
 # Main extraction function
-# ---------------------------------------------------------------------------
-
 def extract_provenance(
     file_bytes: bytes,
     filename:   str,
@@ -118,7 +110,7 @@ def extract_provenance(
     ext        = Path(filename).suffix.lower().lstrip(".")
     media_type = _ext_to_mime(ext)
 
-    # ── Attempt manifest read ────────────────────────────────────────────
+    # Attempt manifest read
     try:
         settings_dict: dict[str, Any] = {}
         if trust_anchors_pem:
@@ -144,6 +136,7 @@ def extract_provenance(
     except c2pa.C2paError as e:
         err_str = str(e)
         # ManifestNotFound is the expected case for media without C2PA data
+        
         if "ManifestNotFound" in err_str or "no JUMBF" in err_str.lower():
             return _no_manifest_report(filename, file_sha256, media_type)
         logger.error(f"C2PA read error for {filename}: {err_str}")
