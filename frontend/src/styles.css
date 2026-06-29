@@ -189,7 +189,7 @@ body {
 .hist-badge.REMOTE_MANIFEST { background: rgba(47,129,247,.15); color: var(--accent); border: 1px solid var(--accent); }
 .hist-meta { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
 
-/* ── Main workspace ──────────────────────────────────────────────────────── */
+/* Main workspace */
 .main-view {
   background: var(--bg);
   overflow-y: auto;
