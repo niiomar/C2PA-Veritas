@@ -200,10 +200,7 @@ def extract_provenance(
     )
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
 def _parse_manifest(label: str, mdata: dict, is_active: bool) -> ManifestSummary:
     sig     = mdata.get("signature_info", {})
     gen     = mdata.get("claim_generator_info", [{}])
@@ -263,6 +260,7 @@ def _build_timeline(
 
     Ordering: ingredient manifests (older) appear before the active manifest.
     """
+    
     # Build a rough ordering: manifests that appear as ingredients first
     ingredient_labels: set[str] = set()
     for mdata in raw.values():
