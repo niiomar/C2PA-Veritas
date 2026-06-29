@@ -44,7 +44,7 @@ body {
   gap: 1px;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────────  */
+/* Sidebar */
 .sidebar {
   background: var(--bg);
   display: flex;
