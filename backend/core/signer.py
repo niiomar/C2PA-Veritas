@@ -4,7 +4,7 @@ C2PA Manifest Signer
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 
-This is the "create" half of the provenance loop — lets a user
+This is the "create" half of the provenance loop, lets a user
 sign their own content so the full create→verify cycle can be demonstrated.
 
 IMPORTANT: Self-signed certificates are for development/demo only.
