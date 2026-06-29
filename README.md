@@ -11,7 +11,7 @@
 
 ## Overview
 
-Where [ViT-CORE-FORENSICS](https://github.com/niiomar/VIT-CORE-FORENSICS) asks *"does this media look manipulated?"*, C2PA-Veritas asks *"can we cryptographically verify where this media came from and what has been done to it?"* — the two systems cover complementary halves of the media authenticity problem.
+Where [ViT-CORE-FORENSICS](https://github.com/niiomar/VIT-CORE-FORENSICS) asks *"does this media look manipulated?"*, C2PA-Veritas asks *"can we cryptographically verify where this media came from and what has been done to it?"*  the two systems cover complementary halves of the media authenticity problem.
 
 C2PA is an open standard backed by Adobe, Microsoft, BBC, Sony, and OpenAI. Content signed with C2PA carries a cryptographically-verified edit history embedded directly in the file. C2PA-Veritas parses and validates these manifests, surfaces the edit timeline, detects stripped or absent credentials, and can sign new files with a development certificate for full round-trip testing.
 
@@ -61,7 +61,7 @@ C2PA-Veritas/
 │       └── test_extractor.py
 ├── frontend/
 │   ├── src/
-│   │   ├── app.js           # Entry point — UI logic, verify/sign flows, history
+│   │   ├── app.js           # Entry point UI logic, verify/sign flows, history
 │   │   ├── styles.css       # Full design system
 │   │   ├── components/      # sidebar.js, workspace.js, history.js
 │   │   └── utils/api.js     # API calls to backend
