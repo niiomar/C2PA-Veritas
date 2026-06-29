@@ -23,10 +23,8 @@ import c2pa
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Public signing function
-# ---------------------------------------------------------------------------
 
+# Public signing function
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
