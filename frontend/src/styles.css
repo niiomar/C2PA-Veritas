@@ -34,7 +34,7 @@ body {
 }
 #app { height: 100vh; display: flex; flex-direction: column; }
 
-/* ── Layout ─────────────────────────────────────────────────────────────── */
+/* Layout */
 .layout {
   display: grid;
   grid-template-columns: 300px 1fr;
