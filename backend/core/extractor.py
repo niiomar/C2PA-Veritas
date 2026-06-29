@@ -146,7 +146,7 @@ def extract_provenance(
         logger.exception(f"Unexpected error reading {filename}")
         return _error_report(filename, file_sha256, media_type, str(e))
 
-    # ── Parse manifest store ─────────────────────────────────────────────
+    # Parse manifest store
     active_label      = manifest_store.get("active_manifest")
     manifests_raw     = manifest_store.get("manifests", {})
     validation_results = manifest_store.get("validation_results", {})
