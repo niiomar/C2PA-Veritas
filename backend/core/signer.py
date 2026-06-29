@@ -62,6 +62,7 @@ def sign_media(
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
+    
     # Build manifest definition
     assertions: list[dict] = [
         {
@@ -99,6 +100,7 @@ def sign_media(
 
     manifest_json = json.dumps(manifest_def)
 
+    
     # Sign
     signer = c2pa.create_signer(
         sign_fn     = _make_sign_fn(key_pem),
@@ -116,10 +118,7 @@ def sign_media(
     return dest_stream.getvalue()
 
 
-# ---------------------------------------------------------------------------
 # Dev certificate helpers
-# ---------------------------------------------------------------------------
-
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
