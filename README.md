@@ -1,6 +1,6 @@
 # C2PA-Veritas
 
-**A media content provenance verifier and signer** built on the C2PA (Coalition for Content Provenance and Authenticity) open standard — the cryptographic complement to AI-based deepfake detection.
+**A media content provenance verifier and signer** built on the C2PA (Coalition for Content Provenance and Authenticity) open standard, the cryptographic complement to AI-based deepfake detection.
 
 [![CI](https://github.com/niiomar/C2PA-Veritas/actions/workflows/ci.yml/badge.svg)](https://github.com/niiomar/C2PA-Veritas/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
