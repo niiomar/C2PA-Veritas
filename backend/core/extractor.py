@@ -72,7 +72,7 @@ class ProvenanceReport:
     is_embedded:          bool
     remote_manifest_url:  str | None
     raw_manifest_json:    dict | None
-    signal:               str                 # human-readable one-line verdict
+    signal:               str  # human-readable one-line verdict
     disclaimer:           str
 
 
@@ -110,6 +110,7 @@ def extract_provenance(
     ext        = Path(filename).suffix.lower().lstrip(".")
     media_type = _ext_to_mime(ext)
 
+    
     # Attempt manifest read
     try:
         settings_dict: dict[str, Any] = {}
@@ -135,8 +136,9 @@ def extract_provenance(
 
     except c2pa.C2paError as e:
         err_str = str(e)
-        # ManifestNotFound is the expected case for media without C2PA data
+
         
+        # ManifestNotFound is the expected case for media without C2PA data
         if "ManifestNotFound" in err_str or "no JUMBF" in err_str.lower():
             return _no_manifest_report(filename, file_sha256, media_type)
         logger.error(f"C2PA read error for {filename}: {err_str}")
@@ -164,9 +166,11 @@ def extract_provenance(
 
     active_manifest = next((m for m in parsed_manifests if m.is_active), None)
 
+    
     # Build flattened timeline (oldest ingredient manifest first)
     edit_timeline = _build_timeline(parsed_manifests, manifests_raw)
 
+    
     # Determine status
     if validation_state.lower() == "valid" and not errors:
         status = ProvenanceStatus.VALID
@@ -260,6 +264,7 @@ def _build_timeline(
 
     Ordering: ingredient manifests (older) appear before the active manifest.
     """
+
     
     # Build a rough ordering: manifests that appear as ingredients first
     ingredient_labels: set[str] = set()
