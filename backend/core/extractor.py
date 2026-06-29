@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class ProvenanceStatus(str, Enum):
     VALID            = "VALID"            # Manifest present, signature valid
     INVALID          = "INVALID"          # Manifest present but signature fails
-    NO_MANIFEST      = "NO_MANIFEST"      # No C2PA data found — red flag in forensic context
+    NO_MANIFEST      = "NO_MANIFEST"      # No C2PA data found, red flag in forensic context
     PARTIAL          = "PARTIAL"          # Some assertions valid, others failed
     REMOTE_MANIFEST  = "REMOTE_MANIFEST"  # Manifest hosted remotely (not embedded)
 
@@ -138,7 +138,7 @@ def extract_provenance(
         err_str = str(e)
 
         
-        # ManifestNotFound is the expected case for media without C2PA data
+    # ManifestNotFound is the expected case for media without C2PA data
         if "ManifestNotFound" in err_str or "no JUMBF" in err_str.lower():
             return _no_manifest_report(filename, file_sha256, media_type)
         logger.error(f"C2PA read error for {filename}: {err_str}")
@@ -166,11 +166,9 @@ def extract_provenance(
 
     active_manifest = next((m for m in parsed_manifests if m.is_active), None)
 
-    
     # Build flattened timeline (oldest ingredient manifest first)
     edit_timeline = _build_timeline(parsed_manifests, manifests_raw)
 
-    
     # Determine status
     if validation_state.lower() == "valid" and not errors:
         status = ProvenanceStatus.VALID
@@ -202,7 +200,6 @@ def extract_provenance(
         signal               = signal,
         disclaimer           = DISCLAIMER,
     )
-
 
 # Helpers
 def _parse_manifest(label: str, mdata: dict, is_active: bool) -> ManifestSummary:
@@ -265,7 +262,6 @@ def _build_timeline(
     Ordering: ingredient manifests (older) appear before the active manifest.
     """
 
-    
     # Build a rough ordering: manifests that appear as ingredients first
     ingredient_labels: set[str] = set()
     for mdata in raw.values():
