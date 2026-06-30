@@ -10,13 +10,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from core.audit import get_by_hash, get_recent, log_check, sha256_of_bytes
-from core.extractor import ProvenanceReport, ProvenanceStatus, extract_provenance
+from core.extractor import ProvenanceReport, extract_provenance
 from core.signer import sign_media
 
 load_dotenv()
@@ -33,8 +33,9 @@ CORS_ORIGINS = [o.strip() for o in os.getenv(
 API_KEY = os.getenv("API_KEY", "").strip()
 
 
-# Authentication
-from fastapi import Header, status
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
 
 async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-KEY")):
     if not API_KEY:
@@ -43,7 +44,10 @@ async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-A
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key.")
 
 
+# ---------------------------------------------------------------------------
 # App
+# ---------------------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("C2PA-Veritas starting.")
@@ -61,14 +65,20 @@ app.add_middleware(
 )
 
 
+# ---------------------------------------------------------------------------
 # Serialisation helper (dataclasses → JSON-safe dict)
+# ---------------------------------------------------------------------------
+
 def _report_to_dict(report: ProvenanceReport) -> dict:
     d = dataclasses.asdict(report)
     d["status"] = report.status.value
     return d
 
 
+# ---------------------------------------------------------------------------
 # Routes
+# ---------------------------------------------------------------------------
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": VERSION}
@@ -149,6 +159,7 @@ async def sign(
             software_agent  = software_agent,
             digital_source  = digital_source,
             no_ai_training  = no_ai_training,
+            timestamp_url   = None, # Bypasses the TSA entirely for local testing
         )
     except Exception as e:
         logger.exception("Signing failed")
@@ -179,8 +190,6 @@ async def history_by_hash(file_hash: str):
 
 _static = Path(__file__).parent / "static"
 if _static.exists():
-
-    
     # Mount /assets so Vite-built JS/CSS chunks resolve correctly
     _assets = _static / "assets"
     if _assets.exists():
