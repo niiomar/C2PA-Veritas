@@ -1,10 +1,10 @@
 """
 C2PA Manifest Signer
-
+=====================
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 
-This is the "create" half of the provenance loop, lets a user
+This is the "create" half of the provenance loop — lets a user
 sign their own content so the full create→verify cycle can be demonstrated.
 
 IMPORTANT: Self-signed certificates are for development/demo only.
@@ -23,8 +23,10 @@ import c2pa
 
 logger = logging.getLogger(__name__)
 
-
+# ---------------------------------------------------------------------------
 # Public signing function
+# ---------------------------------------------------------------------------
+
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -62,7 +64,6 @@ def sign_media(
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
-    
     # Build manifest definition
     assertions: list[dict] = [
         {
@@ -100,25 +101,26 @@ def sign_media(
 
     manifest_json = json.dumps(manifest_def)
 
-    
-    # Sign
-    signer = c2pa.create_signer(
-        sign_fn     = _make_sign_fn(key_pem),
-        alg         = c2pa.SigningAlg.ES256,
-        certs       = cert_pem,
-        tsa_url     = timestamp_url,
-    )
-
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
-    builder = c2pa.Builder(manifest_json)
-    builder.sign(signer, mime_type, source_stream, dest_stream)
+    # Using the updated Signer context manager and enum
+    with c2pa.Signer.from_callback(
+        callback=_make_sign_fn(key_pem),
+        alg=c2pa.C2paSigningAlg.ES256, 
+        certs=cert_pem,
+        tsa_url=timestamp_url,
+    ) as signer:
+        builder = c2pa.Builder(manifest_json)
+        builder.sign(signer, mime_type, source_stream, dest_stream)
 
     return dest_stream.getvalue()
 
 
+# ---------------------------------------------------------------------------
 # Dev certificate helpers
+# ---------------------------------------------------------------------------
+
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
@@ -146,6 +148,7 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
             x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
             x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
         ])
+        
         cert = (
             x509.CertificateBuilder()
             .subject_name(subject)
@@ -156,6 +159,21 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
             .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
             .add_extension(
                 x509.BasicConstraints(ca=False, path_length=None), critical=True
+            )
+            # ✅ ADDED: Explicit KeyUsage extension required by C2PA strict validation
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    content_commitment=False,
+                    key_encipherment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=False,
+                    crl_sign=False,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
             )
             .sign(key, hashes.SHA256())
         )
