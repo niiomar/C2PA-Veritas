@@ -1,6 +1,6 @@
 """
 C2PA Manifest Signer
-
+=====================
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 
@@ -23,7 +23,10 @@ import c2pa
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
 # Public signing function
+# ---------------------------------------------------------------------------
+
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -61,7 +64,6 @@ def sign_media(
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
-    
     # Build manifest definition
     assertions: list[dict] = [
         {
@@ -102,7 +104,6 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
-    
     # Using the updated Signer context manager and enum
     with c2pa.Signer.from_callback(
         callback=_make_sign_fn(key_pem),
@@ -116,7 +117,10 @@ def sign_media(
     return dest_stream.getvalue()
 
 
+# ---------------------------------------------------------------------------
 # Dev certificate helpers
+# ---------------------------------------------------------------------------
+
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
@@ -145,75 +149,14 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
             x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
         ])
         
+        now = datetime.datetime.utcnow()
+        
         cert = (
             x509.CertificateBuilder()
             .subject_name(subject)
             .issuer_name(issuer)
             .public_key(key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.datetime.utcnow())
-            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
-            .add_extension(
-                x509.BasicConstraints(ca=False, path_length=None), critical=True
-            )
-
-            
-            # Explicit KeyUsage extension required by C2PA strict validation
-            .add_extension(
-                x509.KeyUsage(
-                    digital_signature=True,
-                    content_commitment=False,
-                    key_encipherment=False,
-                    data_encipherment=False,
-                    key_agreement=False,
-                    key_cert_sign=False,
-                    crl_sign=False,
-                    encipher_only=False,
-                    decipher_only=False,
-                ),
-                critical=True,
-            )
-            .sign(key, hashes.SHA256())
-        )
-
-        _DEV_KEY_PEM = key.private_bytes(
-            encoding   = serialization.Encoding.PEM,
-            format     = serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm = serialization.NoEncryption(),
-        )
-        _DEV_CERT_PEM = cert.public_bytes(serialization.Encoding.PEM)
-
-        logger.warning(
-            "Using auto-generated self-signed certificate for C2PA signing. "
-            "This certificate will NOT be trusted by public C2PA validators. "
-            "For production, provide a certificate from a registered trust anchor."
-        )
-        return _DEV_CERT_PEM, _DEV_KEY_PEM
-
-    except ImportError:
-        raise RuntimeError(
-            "The 'cryptography' package is required for dev certificate generation. "
-            "Install it with: pip install cryptography"
-        )
-
-
-def _make_sign_fn(key_pem: bytes):
-    """Return a signing function compatible with c2pa.create_signer."""
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-
-    key = serialization.load_pem_private_key(key_pem, password=None)
-
-    def sign(data: bytes) -> bytes:
-        return key.sign(data, ec.ECDSA(hashes.SHA256()))
-
-    return sign
-
-
-def _ext_to_mime(ext: str) -> str:
-    return {
-        "jpg": "image/jpeg", "jpeg": "image/jpeg",
-        "png": "image/png",  "webp": "image/webp",
-        "mp4": "video/mp4",  "mov":  "video/quicktime",
-        "pdf": "application/pdf",
-    }.get(ext, "application/octet-stream")
+            # ✅ Fix 1: Subtract 1 day to prevent TSA clock skew rejections
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=365
