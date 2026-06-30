@@ -1,21 +1,13 @@
 """
 C2PA Manifest Signer
-
+=====================
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
-
-This is the "create" half of the provenance loop — lets a user
-sign their own content so the full create→verify cycle can be demonstrated.
-
-IMPORTANT: Self-signed certificates are for development/demo only.
-For production, use a certificate issued by a trust anchor registered
-with the C2PA Trust List (see https://c2pa.org/trust-list/).
 """
 
 import io
 import json
 import logging
-import os
 import datetime
 from pathlib import Path
 
@@ -27,8 +19,10 @@ from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger(__name__)
 
-
+# ---------------------------------------------------------------------------
 # Public signing function
+# ---------------------------------------------------------------------------
+
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -39,20 +33,16 @@ def sign_media(
     no_ai_training: bool      = True,
     cert_pem:      bytes | None = None,
     key_pem:       bytes | None = None,
-    timestamp_url: str        = "http://timestamp.digicert.com",
+    timestamp_url: str | None = None,
 ) -> bytes:
-    """
-    Embed a C2PA manifest into a copy of the given media file.
-    """
+    """Embed a C2PA manifest into a copy of the given media file."""
     ext       = Path(filename).suffix.lower().lstrip(".")
     mime_type = _ext_to_mime(ext)
 
-    
     # Load or generate dev credentials
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
-    
     # Build manifest definition
     assertions = [
         {
@@ -92,9 +82,7 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
-    
-    # Dynamic SDK fallback: Handles both legacy (create_signer) 
-    # and modern (Signer.from_callback) c2pa-python environments.
+    # Smart fallback for c2pa-python versions
     if hasattr(c2pa, "Signer"):
         alg = getattr(c2pa, "C2paSigningAlg", getattr(c2pa, "SigningAlg", None))
         with c2pa.Signer.from_callback(
@@ -118,30 +106,30 @@ def sign_media(
     return dest_stream.getvalue()
 
 
+# ---------------------------------------------------------------------------
 # Dev certificate helpers
+# ---------------------------------------------------------------------------
+
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
 def _get_dev_credentials() -> tuple[bytes, bytes]:
-    """
-    Generate a 2-tier certificate chain (Root CA + Leaf) for C2PA testing.
-    C2PA strictly rejects self-signed leaf certificates, so we must build
-    a valid trust chain in memory.
-    """
+    """Generate a C2PA-compliant 2-tier certificate chain in memory."""
     global _DEV_CERT_PEM, _DEV_KEY_PEM
 
     if _DEV_CERT_PEM and _DEV_KEY_PEM:
         return _DEV_CERT_PEM, _DEV_KEY_PEM
 
     now = datetime.datetime.utcnow()
-
     
-    # 1. Create a legitimate Root CA
+    # --- 1. Root CA ---
     root_key = ec.generate_private_key(ec.SECP256R1())
     root_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Root CA"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
     ])
+    
+    root_ski = x509.SubjectKeyIdentifier.from_public_key(root_key.public_key())
     
     root_cert = (
         x509.CertificateBuilder()
@@ -159,16 +147,20 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
                 crl_sign=True, encipher_only=False, decipher_only=False
             ), critical=True
         )
+        .add_extension(root_ski, critical=False)
         .sign(root_key, hashes.SHA256())
     )
 
-    
-    # 2. Create the Leaf Signer Certificate (Signed by the Root CA)
+    # --- 2. Leaf Signer ---
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     leaf_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
     ])
+    
+    leaf_ski = x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key())
+    # ✅ Fixed: Pass the root_ski object directly instead of .digest
+    leaf_aki = x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(root_ski)
     
     leaf_cert = (
         x509.CertificateBuilder()
@@ -189,13 +181,14 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
         .add_extension(
             x509.ExtendedKeyUsage([
                 x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION,
-                x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36") # Official C2PA EKU OID
+                x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36") # C2PA EKU OID
             ]), critical=False
         )
+        .add_extension(leaf_ski, critical=False)
+        .add_extension(leaf_aki, critical=False)
         .sign(root_key, hashes.SHA256())
     )
 
-    # C2PA expects the Leaf certificate first, followed by the Root CA.
     _DEV_CERT_PEM = (
         leaf_cert.public_bytes(serialization.Encoding.PEM) +
         root_cert.public_bytes(serialization.Encoding.PEM)
@@ -211,12 +204,20 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
 
 
 def _make_sign_fn(key_pem: bytes):
-    """Return a signing function compatible with c2pa SDK."""
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+    
     key = serialization.load_pem_private_key(key_pem, password=None)
-
+    
     def sign(data: bytes) -> bytes:
-        return key.sign(data, ec.ECDSA(hashes.SHA256()))
-
+        # 1. Create standard ASN.1 DER signature
+        der_sig = key.sign(data, ec.ECDSA(hashes.SHA256()))
+        
+        # 2. Extract R and S from the DER formatting
+        r, s = decode_dss_signature(der_sig)
+        
+        # 3. Concatenate R and S into strict 64-byte IEEE P1363 format required by C2PA
+        return r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
+        
     return sign
 
 
