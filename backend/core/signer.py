@@ -16,8 +16,8 @@ import io
 import json
 import logging
 import os
-from pathlib import Path
 import datetime
+from pathlib import Path
 
 import c2pa
 from cryptography import x509
@@ -41,7 +41,9 @@ def sign_media(
     key_pem:       bytes | None = None,
     timestamp_url: str        = "http://timestamp.digicert.com",
 ) -> bytes:
-    """Embed a C2PA manifest into a copy of the given media file."""
+    """
+    Embed a C2PA manifest into a copy of the given media file.
+    """
     ext       = Path(filename).suffix.lower().lstrip(".")
     mime_type = _ext_to_mime(ext)
 
@@ -91,7 +93,7 @@ def sign_media(
     dest_stream   = io.BytesIO()
 
     
-    # Smart SDK fallback. Handles both legacy (create_signer) 
+    # Dynamic SDK fallback: Handles both legacy (create_signer) 
     # and modern (Signer.from_callback) c2pa-python environments.
     if hasattr(c2pa, "Signer"):
         alg = getattr(c2pa, "C2paSigningAlg", getattr(c2pa, "SigningAlg", None))
@@ -122,10 +124,9 @@ _DEV_KEY_PEM:  bytes | None = None
 
 def _get_dev_credentials() -> tuple[bytes, bytes]:
     """
-    Generate a 2-tier certificate chain (Root CA + Leaf) for C2PA development.
-    A single self-signed cert is structurally rejected by C2PA because a leaf
-    cannot be a CA, but a self-signed leaf is invalid X.509. 
-    Generating a full chain in memory solves this entirely.
+    Generate a 2-tier certificate chain (Root CA + Leaf) for C2PA testing.
+    C2PA strictly rejects self-signed leaf certificates, so we must build
+    a valid trust chain in memory.
     """
     global _DEV_CERT_PEM, _DEV_KEY_PEM
 
@@ -135,7 +136,7 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
     now = datetime.datetime.utcnow()
 
     
-    # Create a legitimate Root CA
+    # 1. Create a legitimate Root CA
     root_key = ec.generate_private_key(ec.SECP256R1())
     root_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Root CA"),
@@ -161,7 +162,8 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
         .sign(root_key, hashes.SHA256())
     )
 
-    #  Create the Leaf Signer Certificate (Signed by the Root CA)
+    
+    # 2. Create the Leaf Signer Certificate (Signed by the Root CA)
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     leaf_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
@@ -185,12 +187,14 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
             ), critical=True
         )
         .add_extension(
-            x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION]), critical=False
+            x509.ExtendedKeyUsage([
+                x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION,
+                x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36") # Official C2PA EKU OID
+            ]), critical=False
         )
         .sign(root_key, hashes.SHA256())
     )
 
-    
     # C2PA expects the Leaf certificate first, followed by the Root CA.
     _DEV_CERT_PEM = (
         leaf_cert.public_bytes(serialization.Encoding.PEM) +
