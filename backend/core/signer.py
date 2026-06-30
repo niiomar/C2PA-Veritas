@@ -1,6 +1,6 @@
 """
 C2PA Manifest Signer
-=====================
+
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 
@@ -27,10 +27,8 @@ from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Public signing function
-# ---------------------------------------------------------------------------
 
+# Public signing function
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -47,10 +45,12 @@ def sign_media(
     ext       = Path(filename).suffix.lower().lstrip(".")
     mime_type = _ext_to_mime(ext)
 
+    
     # Load or generate dev credentials
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
+    
     # Build manifest definition
     assertions = [
         {
@@ -90,7 +90,8 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
-    # ✅ Fix 1: Smart SDK fallback. Handles both legacy (create_signer) 
+    
+    # Smart SDK fallback. Handles both legacy (create_signer) 
     # and modern (Signer.from_callback) c2pa-python environments.
     if hasattr(c2pa, "Signer"):
         alg = getattr(c2pa, "C2paSigningAlg", getattr(c2pa, "SigningAlg", None))
@@ -115,10 +116,7 @@ def sign_media(
     return dest_stream.getvalue()
 
 
-# ---------------------------------------------------------------------------
 # Dev certificate helpers
-# ---------------------------------------------------------------------------
-
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
@@ -135,8 +133,9 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
         return _DEV_CERT_PEM, _DEV_KEY_PEM
 
     now = datetime.datetime.utcnow()
+
     
-    # ✅ Fix 2: Create a legitimate Root CA
+    # Create a legitimate Root CA
     root_key = ec.generate_private_key(ec.SECP256R1())
     root_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Root CA"),
@@ -162,7 +161,7 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
         .sign(root_key, hashes.SHA256())
     )
 
-    # ✅ Fix 3: Create the Leaf Signer Certificate (Signed by the Root CA)
+    #  Create the Leaf Signer Certificate (Signed by the Root CA)
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     leaf_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
@@ -191,6 +190,7 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
         .sign(root_key, hashes.SHA256())
     )
 
+    
     # C2PA expects the Leaf certificate first, followed by the Root CA.
     _DEV_CERT_PEM = (
         leaf_cert.public_bytes(serialization.Encoding.PEM) +
