@@ -1,6 +1,6 @@
 """
 C2PA Manifest Signer
-
+=====================
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 
@@ -16,15 +16,21 @@ import io
 import json
 import logging
 import os
-import tempfile
 from pathlib import Path
+import datetime
 
 import c2pa
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger(__name__)
 
-
+# ---------------------------------------------------------------------------
 # Public signing function
+# ---------------------------------------------------------------------------
+
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -37,35 +43,16 @@ def sign_media(
     key_pem:       bytes | None = None,
     timestamp_url: str        = "http://timestamp.digicert.com",
 ) -> bytes:
-    """
-    Embed a C2PA manifest into a copy of the given media file.
-
-    Args:
-        file_bytes:      Raw bytes of the source file.
-        filename:        Original filename (determines format/MIME type).
-        claim_generator: Name of the tool creating the manifest.
-        action:          C2PA action label (e.g. 'c2pa.created', 'c2pa.edited').
-        software_agent:  Name of the software that performed the action.
-        digital_source:  IPTC digital source type URL.
-        no_ai_training:  If True, embed a "do not train" assertion.
-        cert_pem:        PEM-encoded certificate chain bytes. Uses dev cert if None.
-        key_pem:         PEM-encoded private key bytes. Uses dev key if None.
-        timestamp_url:   RFC 3161 TSA URL for trusted timestamps.
-
-    Returns:
-        Signed file bytes with embedded C2PA manifest.
-    """
+    """Embed a C2PA manifest into a copy of the given media file."""
     ext       = Path(filename).suffix.lower().lstrip(".")
     mime_type = _ext_to_mime(ext)
 
-    
     # Load or generate dev credentials
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
-    
     # Build manifest definition
-    assertions: list[dict] = [
+    assertions = [
         {
             "label": "c2pa.actions",
             "data": {
@@ -100,122 +87,127 @@ def sign_media(
     }
 
     manifest_json = json.dumps(manifest_def)
-
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
-    
-    # Using the updated Signer context manager and enum
-    with c2pa.Signer.from_callback(
-        callback=_make_sign_fn(key_pem),
-        alg=c2pa.C2paSigningAlg.ES256, 
-        certs=cert_pem,
-        tsa_url=timestamp_url,
-    ) as signer:
+    # ✅ Fix 1: Smart SDK fallback. Handles both legacy (create_signer) 
+    # and modern (Signer.from_callback) c2pa-python environments.
+    if hasattr(c2pa, "Signer"):
+        alg = getattr(c2pa, "C2paSigningAlg", getattr(c2pa, "SigningAlg", None))
+        with c2pa.Signer.from_callback(
+            callback=_make_sign_fn(key_pem),
+            alg=alg.ES256,
+            certs=cert_pem,
+            tsa_url=timestamp_url,
+        ) as signer:
+            builder = c2pa.Builder(manifest_json)
+            builder.sign(signer, mime_type, source_stream, dest_stream)
+    else:
+        signer = c2pa.create_signer(
+            sign_fn=_make_sign_fn(key_pem),
+            alg=c2pa.SigningAlg.ES256,
+            certs=cert_pem,
+            tsa_url=timestamp_url,
+        )
         builder = c2pa.Builder(manifest_json)
         builder.sign(signer, mime_type, source_stream, dest_stream)
 
     return dest_stream.getvalue()
 
 
+# ---------------------------------------------------------------------------
 # Dev certificate helpers
+# ---------------------------------------------------------------------------
+
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
-
 def _get_dev_credentials() -> tuple[bytes, bytes]:
     """
-    Generate a self-signed EC P-256 certificate + key for development use.
-    Cached in module-level variables so generation only happens once per process.
+    Generate a 2-tier certificate chain (Root CA + Leaf) for C2PA development.
+    A single self-signed cert is structurally rejected by C2PA because a leaf
+    cannot be a CA, but a self-signed leaf is invalid X.509. 
+    Generating a full chain in memory solves this entirely.
     """
     global _DEV_CERT_PEM, _DEV_KEY_PEM
 
     if _DEV_CERT_PEM and _DEV_KEY_PEM:
         return _DEV_CERT_PEM, _DEV_KEY_PEM
 
-    try:
-        from cryptography import x509
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.x509.oid import NameOID
-        import datetime
-
-        key = ec.generate_private_key(ec.SECP256R1())
-
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
-        ])
-        
-        now = datetime.datetime.utcnow()
-        
-        cert = (
-            x509.CertificateBuilder()
-            .subject_name(subject)
-            .issuer_name(issuer)
-            .public_key(key.public_key())
-            .serial_number(x509.random_serial_number())
-
-            
-            # Subtract 1 day to prevent TSA clock skew rejections
-            .not_valid_before(now - datetime.timedelta(days=1))
-            .not_valid_after(now + datetime.timedelta(days=365))
-            .add_extension(
-                x509.BasicConstraints(ca=False, path_length=None), critical=True
-            )
-            .add_extension(
-                x509.KeyUsage(
-                    digital_signature=True,
-                    content_commitment=False,
-                    key_encipherment=False,
-                    data_encipherment=False,
-                    key_agreement=False,
-                    key_cert_sign=False,
-                    crl_sign=False,
-                    encipher_only=False,
-                    decipher_only=False,
-                ),
-                critical=True,
-            )
-
-            
-            # Add ExtendedKeyUsage (EKU) strictly required by C2PA
-            .add_extension(
-                x509.ExtendedKeyUsage([
-                    x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION,
-                    x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36")  # Official C2PA EKU OID
-                ]),
-                critical=False,
-            )
-            .sign(key, hashes.SHA256())
+    now = datetime.datetime.utcnow()
+    
+    # ✅ Fix 2: Create a legitimate Root CA
+    root_key = ec.generate_private_key(ec.SECP256R1())
+    root_name = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Root CA"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
+    ])
+    
+    root_cert = (
+        x509.CertificateBuilder()
+        .subject_name(root_name)
+        .issuer_name(root_name)
+        .public_key(root_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=1), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True, content_commitment=False, key_encipherment=False,
+                data_encipherment=False, key_agreement=False, key_cert_sign=True,
+                crl_sign=True, encipher_only=False, decipher_only=False
+            ), critical=True
         )
+        .sign(root_key, hashes.SHA256())
+    )
 
-        _DEV_KEY_PEM = key.private_bytes(
-            encoding   = serialization.Encoding.PEM,
-            format     = serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm = serialization.NoEncryption(),
+    # ✅ Fix 3: Create the Leaf Signer Certificate (Signed by the Root CA)
+    leaf_key = ec.generate_private_key(ec.SECP256R1())
+    leaf_name = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
+    ])
+    
+    leaf_cert = (
+        x509.CertificateBuilder()
+        .subject_name(leaf_name)
+        .issuer_name(root_name)
+        .public_key(leaf_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True, content_commitment=False, key_encipherment=False,
+                data_encipherment=False, key_agreement=False, key_cert_sign=False,
+                crl_sign=False, encipher_only=False, decipher_only=False
+            ), critical=True
         )
-        _DEV_CERT_PEM = cert.public_bytes(serialization.Encoding.PEM)
+        .add_extension(
+            x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION]), critical=False
+        )
+        .sign(root_key, hashes.SHA256())
+    )
 
-        logger.warning(
-            "Using auto-generated self-signed certificate for C2PA signing. "
-            "This certificate will NOT be trusted by public C2PA validators. "
-            "For production, provide a certificate from a registered trust anchor."
-        )
-        return _DEV_CERT_PEM, _DEV_KEY_PEM
+    # C2PA expects the Leaf certificate first, followed by the Root CA.
+    _DEV_CERT_PEM = (
+        leaf_cert.public_bytes(serialization.Encoding.PEM) +
+        root_cert.public_bytes(serialization.Encoding.PEM)
+    )
+    _DEV_KEY_PEM = leaf_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
 
-    except ImportError:
-        raise RuntimeError(
-            "The 'cryptography' package is required for dev certificate generation. "
-            "Install it with: pip install cryptography"
-        )
+    logger.warning("Using auto-generated 2-tier certificate chain for C2PA testing.")
+    return _DEV_CERT_PEM, _DEV_KEY_PEM
 
 
 def _make_sign_fn(key_pem: bytes):
-    """Return a signing function compatible with c2pa.create_signer."""
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-
+    """Return a signing function compatible with c2pa SDK."""
     key = serialization.load_pem_private_key(key_pem, password=None)
 
     def sign(data: bytes) -> bytes:
