@@ -1,6 +1,6 @@
 """
 C2PA Manifest Extractor and Validator
-
+======================================
 Core logic for reading C2PA manifests from media files, validating
 signature chains, extracting edit history timelines, and detecting
 stripped/absent manifests.
@@ -20,11 +20,15 @@ import c2pa
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
 # Result types
+# ---------------------------------------------------------------------------
+
 class ProvenanceStatus(str, Enum):
     VALID            = "VALID"            # Manifest present, signature valid
     INVALID          = "INVALID"          # Manifest present but signature fails
-    NO_MANIFEST      = "NO_MANIFEST"      # No C2PA data found, red flag in forensic context
+    NO_MANIFEST      = "NO_MANIFEST"      # No C2PA data found — red flag in forensic context
     PARTIAL          = "PARTIAL"          # Some assertions valid, others failed
     REMOTE_MANIFEST  = "REMOTE_MANIFEST"  # Manifest hosted remotely (not embedded)
 
@@ -72,7 +76,7 @@ class ProvenanceReport:
     is_embedded:          bool
     remote_manifest_url:  str | None
     raw_manifest_json:    dict | None
-    signal:               str  # human-readable one-line verdict
+    signal:               str                 # human-readable one-line verdict
     disclaimer:           str
 
 
@@ -83,7 +87,11 @@ DISCLAIMER = (
     "many legitimate media files predate C2PA adoption."
 )
 
+
+# ---------------------------------------------------------------------------
 # Main extraction function
+# ---------------------------------------------------------------------------
+
 def extract_provenance(
     file_bytes: bytes,
     filename:   str,
@@ -110,8 +118,7 @@ def extract_provenance(
     ext        = Path(filename).suffix.lower().lstrip(".")
     media_type = _ext_to_mime(ext)
 
-    
-    # Attempt manifest read
+    # ── Attempt manifest read ────────────────────────────────────────────
     try:
         settings_dict: dict[str, Any] = {}
         if trust_anchors_pem:
@@ -132,13 +139,13 @@ def extract_provenance(
         manifest_json_str = reader.json()
         manifest_store    = json.loads(manifest_json_str)
         is_embedded       = reader.is_embedded()
-        remote_url        = reader.remote_url()
+        
+        # ✅ THE FIX: Call get_remote_url() instead of remote_url()
+        remote_url        = reader.get_remote_url()
 
     except c2pa.C2paError as e:
         err_str = str(e)
-
-        
-    # ManifestNotFound is the expected case for media without C2PA data
+        # ManifestNotFound is the expected case for media without C2PA data
         if "ManifestNotFound" in err_str or "no JUMBF" in err_str.lower():
             return _no_manifest_report(filename, file_sha256, media_type)
         logger.error(f"C2PA read error for {filename}: {err_str}")
@@ -148,7 +155,7 @@ def extract_provenance(
         logger.exception(f"Unexpected error reading {filename}")
         return _error_report(filename, file_sha256, media_type, str(e))
 
-    # Parse manifest store
+    # ── Parse manifest store ─────────────────────────────────────────────
     active_label      = manifest_store.get("active_manifest")
     manifests_raw     = manifest_store.get("manifests", {})
     validation_results = manifest_store.get("validation_results", {})
@@ -201,7 +208,11 @@ def extract_provenance(
         disclaimer           = DISCLAIMER,
     )
 
+
+# ---------------------------------------------------------------------------
 # Helpers
+# ---------------------------------------------------------------------------
+
 def _parse_manifest(label: str, mdata: dict, is_active: bool) -> ManifestSummary:
     sig     = mdata.get("signature_info", {})
     gen     = mdata.get("claim_generator_info", [{}])
@@ -261,7 +272,6 @@ def _build_timeline(
 
     Ordering: ingredient manifests (older) appear before the active manifest.
     """
-
     # Build a rough ordering: manifests that appear as ingredients first
     ingredient_labels: set[str] = set()
     for mdata in raw.values():
