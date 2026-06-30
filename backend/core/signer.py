@@ -1,6 +1,6 @@
 """
 C2PA Manifest Signer
-=====================
+
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 
@@ -23,10 +23,8 @@ import c2pa
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Public signing function
-# ---------------------------------------------------------------------------
 
+# Public signing function
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -60,10 +58,12 @@ def sign_media(
     ext       = Path(filename).suffix.lower().lstrip(".")
     mime_type = _ext_to_mime(ext)
 
+    
     # Load or generate dev credentials
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
+    
     # Build manifest definition
     assertions: list[dict] = [
         {
@@ -104,6 +104,7 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
+    
     # Using the updated Signer context manager and enum
     with c2pa.Signer.from_callback(
         callback=_make_sign_fn(key_pem),
@@ -117,10 +118,7 @@ def sign_media(
     return dest_stream.getvalue()
 
 
-# ---------------------------------------------------------------------------
 # Dev certificate helpers
-# ---------------------------------------------------------------------------
-
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
@@ -157,7 +155,9 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
             .issuer_name(issuer)
             .public_key(key.public_key())
             .serial_number(x509.random_serial_number())
-            # ✅ Fix 1: Subtract 1 day to prevent TSA clock skew rejections
+
+            
+            # Subtract 1 day to prevent TSA clock skew rejections
             .not_valid_before(now - datetime.timedelta(days=1))
             .not_valid_after(now + datetime.timedelta(days=365))
             .add_extension(
@@ -177,11 +177,13 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
                 ),
                 critical=True,
             )
-            # ✅ Fix 2: Add ExtendedKeyUsage (EKU) strictly required by C2PA
+
+            
+            # Add ExtendedKeyUsage (EKU) strictly required by C2PA
             .add_extension(
                 x509.ExtendedKeyUsage([
                     x509.oid.ExtendedKeyUsageOID.EMAIL_PROTECTION,
-                    x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36") # Official C2PA EKU OID
+                    x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36")  # Official C2PA EKU OID
                 ]),
                 critical=False,
             )
