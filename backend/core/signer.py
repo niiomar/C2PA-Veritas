@@ -23,10 +23,7 @@ import c2pa
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # Public signing function
-# ---------------------------------------------------------------------------
-
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -64,6 +61,7 @@ def sign_media(
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
+    
     # Build manifest definition
     assertions: list[dict] = [
         {
@@ -104,6 +102,7 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
+    
     # Using the updated Signer context manager and enum
     with c2pa.Signer.from_callback(
         callback=_make_sign_fn(key_pem),
@@ -117,10 +116,7 @@ def sign_media(
     return dest_stream.getvalue()
 
 
-# ---------------------------------------------------------------------------
 # Dev certificate helpers
-# ---------------------------------------------------------------------------
-
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
@@ -160,7 +156,9 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
             .add_extension(
                 x509.BasicConstraints(ca=False, path_length=None), critical=True
             )
-            # ✅ ADDED: Explicit KeyUsage extension required by C2PA strict validation
+
+            
+            # Explicit KeyUsage extension required by C2PA strict validation
             .add_extension(
                 x509.KeyUsage(
                     digital_signature=True,
