@@ -1,6 +1,6 @@
 """
 C2PA Manifest Signer
-=====================
+
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 """
@@ -19,10 +19,8 @@ from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Public signing function
-# ---------------------------------------------------------------------------
 
+# Public signing function
 def sign_media(
     file_bytes:    bytes,
     filename:      str,
@@ -43,6 +41,7 @@ def sign_media(
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
+    
     # Build manifest definition
     assertions = [
         {
@@ -82,6 +81,7 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
+    
     # Smart fallback for c2pa-python versions
     if hasattr(c2pa, "Signer"):
         alg = getattr(c2pa, "C2paSigningAlg", getattr(c2pa, "SigningAlg", None))
@@ -106,10 +106,7 @@ def sign_media(
     return dest_stream.getvalue()
 
 
-# ---------------------------------------------------------------------------
 # Dev certificate helpers
-# ---------------------------------------------------------------------------
-
 _DEV_CERT_PEM: bytes | None = None
 _DEV_KEY_PEM:  bytes | None = None
 
@@ -122,7 +119,7 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
 
     now = datetime.datetime.utcnow()
     
-    # --- 1. Root CA ---
+    # 1. Root CA 
     root_key = ec.generate_private_key(ec.SECP256R1())
     root_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Root CA"),
@@ -151,7 +148,7 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
         .sign(root_key, hashes.SHA256())
     )
 
-    # --- 2. Leaf Signer ---
+    # 2. Leaf Signer
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     leaf_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
@@ -159,7 +156,9 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
     ])
     
     leaf_ski = x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key())
-    # ✅ Fixed: Pass the root_ski object directly instead of .digest
+
+    
+    # Pass the root_ski object directly instead of .digest
     leaf_aki = x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(root_ski)
     
     leaf_cert = (
