@@ -32,7 +32,8 @@ CORS_ORIGINS = [o.strip() for o in os.getenv(
 
 API_KEY = os.getenv("API_KEY", "").strip()
 
-# Auth
+
+# Authentication
 async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-KEY")):
     if not API_KEY:
         return
@@ -63,6 +64,7 @@ def _report_to_dict(report: ProvenanceReport) -> dict:
     d = dataclasses.asdict(report)
     d["status"] = report.status.value
     return d
+
 
 # Routes
 @app.get("/health")
@@ -176,6 +178,7 @@ async def history_by_hash(file_hash: str):
 
 _static = Path(__file__).parent / "static"
 if _static.exists():
+
     
     # Mount /assets so Vite-built JS/CSS chunks resolve correctly
     _assets = _static / "assets"
