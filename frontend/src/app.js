@@ -4,7 +4,7 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// Mount layout
+// ── Mount layout ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -12,14 +12,14 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// State
-let currentFile   = null;
-let currentMode   = 'verify';  // 'verify' | 'sign'
+// ── State ────────────────────────────────────────────────────────────────────
+let currentFile    = null;
+let currentMode    = 'verify';  // 'verify' | 'sign'
 let sessionHistory = [];
-let signedBlob    = null;
-let signedFilename= null;
+let signedBlob     = null;
+let signedFilename = null;
 
-// DOM refs
+// ── DOM refs ─────────────────────────────────────────────────────────────────
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -27,7 +27,7 @@ const modeVerify = document.getElementById('mode-verify');
 const modeSigning= document.getElementById('mode-sign');
 const signOpts   = document.getElementById('sign-options');
 
-// File selection
+// ── File selection ───────────────────────────────────────────────────────────
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -41,13 +41,13 @@ dropZone.addEventListener('drop', e => {
 function handleFile(file) {
   if (!file) return;
   currentFile = file;
-  const label = currentMode === 'verify' ? 'VERIFY' : 'SIGN';
+  const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
   actionBtn.disabled   = false;
-  actionBtn.textContent= `${label}: ${file.name.length > 28 ? file.name.slice(0,25)+'…' : file.name}`;
+  actionBtn.textContent= `${label}: ${file.name.length > 25 ? file.name.slice(0,22)+'…' : file.name}`;
   resetResults();
 }
 
-// Mode switching
+// ── Mode switching ───────────────────────────────────────────────────────────
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -55,14 +55,14 @@ function handleFile(file) {
     modeSigning.classList.toggle('active', currentMode === 'sign');
     signOpts.classList.toggle('visible', currentMode === 'sign');
     if (currentFile) {
-      const label = currentMode === 'verify' ? 'VERIFY' : 'SIGN';
+      const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
       actionBtn.textContent = `${label}: ${currentFile.name}`;
     }
     resetResults();
   });
 });
 
-// Action 
+// ── Action ───────────────────────────────────────────────────────────────────
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -75,7 +75,15 @@ actionBtn.addEventListener('click', async () => {
       await runSign();
     }
   } catch (err) {
-    showBanner('warn-invalid', `Pipeline error: ${err.message}`);
+    // Show the dedicated system error banner
+    showBanner('warn-sys-error', `PIPELINE ERROR: ${err.message}`);
+    
+    // Hide the dashboard data containers so they don't look broken
+    document.querySelector('.dashboard-top').style.display = 'none';
+    document.querySelector('.metrics-row').style.display = 'none';
+    document.getElementById('json-toggle').style.display = 'none';
+    
+    // Switch from idle to result state
     document.getElementById('idle-state').style.display = 'none';
     document.getElementById('result-state').classList.add('visible');
   } finally {
@@ -83,11 +91,11 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// Verify flow
+// ── Verify flow ───────────────────────────────────────────────────────────────
 async function runVerify() {
   const data = await verifyFile(currentFile);
   if (data._rateLimited) {
-    showBanner('warn-invalid', 'Rate limit reached — please wait before retrying.');
+    showBanner('warn-sys-error', 'Rate limit reached — please wait before retrying.');
     showResults();
     return;
   }
@@ -110,13 +118,13 @@ async function runVerify() {
   updateHistory(sessionHistory);
 }
 
-// Sign flow
+// ── Sign flow ─────────────────────────────────────────────────────────────────
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
     softwareAgent:   document.getElementById('sign-agent').value.trim() || null,
     noAiTraining:    document.getElementById('sign-no-ai').checked,
-    claimGenerator:  'C2PA-Veritas/1.0',
+    claimGenerator:  'C2PA-Veritas/2.0',
   };
 
   const result = await signFile(currentFile, opts);
@@ -132,7 +140,7 @@ async function runSign() {
   sessionHistory.unshift({
     status:     'SIGNED',
     filename:   currentFile.name,
-    media_type: currentFile.type || '—',
+    media_type: currentFile.type || 'N/A',
     _idx:       sessionHistory.length,
     _time:      new Date().toLocaleTimeString(),
   });
@@ -148,30 +156,48 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
 
-
-// Render helpers
-const STATUS_ICONS = {
-  VALID:           '✅',
-  INVALID:         '❌',
-  NO_MANIFEST:     '⚠️',
-  PARTIAL:         '⚡',
-  REMOTE_MANIFEST: '🔗',
-};
+// ── Render helpers ────────────────────────────────────────────────────────────
 
 function renderVerdict(d) {
-  const ring   = document.getElementById('verdict-ring');
-  const label  = document.getElementById('verdict-label');
-  const signal = document.getElementById('verdict-signal');
+  const labelEl = document.getElementById('verdict-label');
+  const scoreEl = document.getElementById('trust-score');
+  const fillEl  = document.getElementById('gauge-fill');
+  
+  // Calculate Trust Score based on Status
+  let score = 0;
+  if (d.status === 'VALID') score = 100;
+  else if (d.status === 'REMOTE_MANIFEST') score = 80;
+  else if (d.status === 'PARTIAL') score = 60;
+  else score = 0; // INVALID or NO_MANIFEST
+  
+  labelEl.textContent = d.status.replace('_', ' ');
+  labelEl.style.color = `var(--${
+    score === 100 ? 'green' : score >= 60 ? 'purple' : score === 0 && d.status === 'NO_MANIFEST' ? 'amber' : 'red'
+  })`;
+  
+  // Animate numbers up
+  let currentScore = 0;
+  const interval = setInterval(() => {
+    if (currentScore >= score) {
+      scoreEl.textContent = score;
+      clearInterval(interval);
+    } else {
+      currentScore += 2;
+      scoreEl.textContent = currentScore;
+    }
+  }, 20);
 
-  ring.className      = `verdict-ring ${d.status}`;
-  ring.textContent    = STATUS_ICONS[d.status] || '?';
-  label.className     = d.status;
-  label.textContent   = d.status.replace('_', ' ');
-  signal.textContent  = d.signal;
+  // Animate Gauge SVG (Circumference is ~377)
+  fillEl.className.baseVal = `gauge-fill ${d.status}`;
+  setTimeout(() => {
+    fillEl.style.strokeDashoffset = 377 - (377 * (score / 100));
+  }, 100);
 
-  document.getElementById('verdict-time').textContent     = `${d.processing_time_sec}s`;
-  document.getElementById('verdict-embedded').textContent = d.is_embedded ? 'Embedded manifest' : 'No embedded manifest';
-  document.getElementById('verdict-sha').textContent      = d.file_sha256 ? d.file_sha256.slice(0,16)+'…' : '—';
+  // Evidence Summary
+  document.getElementById('sum-signal').textContent   = d.signal || 'None';
+  document.getElementById('sum-time').textContent     = `${d.processing_time_sec}s`;
+  document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded in asset' : 'Not embedded';
+  document.getElementById('sum-sha').textContent      = d.file_sha256 ? d.file_sha256.slice(0, 20) + '…' : 'None';
 
   // Banners
   document.getElementById('warn-no-manifest').classList.toggle('visible', d.status === 'NO_MANIFEST');
@@ -182,12 +208,11 @@ function renderVerdict(d) {
 
 function renderMetrics(d) {
   const m = d.active_manifest;
-  document.getElementById('mc-issuer').textContent    = m?.issuer        || 'N/A';
+  document.getElementById('mc-issuer').textContent    = m?.issuer || 'N/A';
   document.getElementById('mc-alg').textContent       = m?.signing_algorithm || 'N/A';
   document.getElementById('mc-manifests').textContent = d.manifests?.length ?? '0';
   document.getElementById('mc-actions').textContent   = d.edit_timeline?.length ?? '0';
-  document.getElementById('mc-type').textContent      = d.media_type || '—';
-  document.getElementById('mc-proctime').textContent  = `${d.processing_time_sec}s`;
+  document.getElementById('mc-type').textContent      = d.media_type || 'N/A';
 }
 
 function renderCertPanel(d) {
@@ -196,23 +221,19 @@ function renderCertPanel(d) {
 
   const panel = document.getElementById('cert-panel');
   const card  = document.getElementById('cert-card');
-
   const isDev = m.issuer?.includes('Veritas') || m.issuer?.includes('Dev') || m.issuer?.includes('self');
-  const dotCls = d.status === 'VALID' ? (isDev ? 'dev' : 'valid') : 'invalid';
 
   if (isDev) document.getElementById('warn-dev-cert').style.display = 'flex';
 
   card.innerHTML = `
-    <div class="cert-row">
-      <div class="cert-dot ${dotCls}"></div>
-      <div class="cert-info">
-        <div class="cert-issuer">${m.issuer || 'Unknown Issuer'}</div>
-        ${m.cert_serial ? `<div class="cert-serial">Serial: ${m.cert_serial.slice(0,32)}…</div>` : ''}
-      </div>
-      <div class="cert-alg">${m.signing_algorithm || '—'}</div>
+    <div class="cert-icon">🔑</div>
+    <div class="cert-info">
+      <div class="cert-issuer">${m.issuer || 'Unknown Identity'}</div>
+      ${m.cert_serial ? `<div class="cert-serial">Serial: ${m.cert_serial}</div>` : ''}
     </div>
+    <div class="cert-alg">${m.signing_algorithm || 'N/A'}</div>
   `;
-  panel.style.display = 'block';
+  panel.classList.add('visible');
 }
 
 function renderTimeline(d) {
@@ -223,22 +244,25 @@ function renderTimeline(d) {
   const timeline = document.getElementById('timeline');
 
   timeline.innerHTML = tl.map(action => {
-    const action_label = action.action || 'Unknown Action';
-    const agent  = action.software_agent ? `<div class="tl-agent">by ${action.software_agent}</div>` : '';
-    const when   = action.when           ? `<div class="tl-when">${new Date(action.when).toLocaleString()}</div>` : '';
-    const src    = action.digital_source
-      ? `<div class="tl-source">${action.digital_source.split('/').pop()}</div>` : '';
+    const action_label = action.action || 'Unknown Event';
+    const agent  = action.software_agent ? `<div class="tl-agent">Generated by ${action.software_agent}</div>` : '';
+    const when   = action.when ? `<div class="tl-when">${new Date(action.when).toLocaleString()}</div>` : '';
 
     return `
       <div class="tl-item">
         <div class="tl-dot"></div>
-        <div class="tl-action">${action_label}</div>
-        ${agent}${when}${src}
+        <div class="tl-content">
+          <div class="tl-header">
+            <span class="tl-action">${action_label}</span>
+            ${when}
+          </div>
+          ${agent}
+        </div>
       </div>
     `;
   }).join('');
 
-  panel.style.display = 'block';
+  panel.classList.add('visible');
 }
 
 function renderAiPolicy(d) {
@@ -249,27 +273,27 @@ function renderAiPolicy(d) {
   const grid  = document.getElementById('policy-grid');
 
   const LABEL_MAP = {
-    'c2pa.ai_generative_training': 'Generative Training',
-    'c2pa.ai_inference':           'AI Inference',
-    'c2pa.ai_training':            'AI Training',
-    'c2pa.data_mining':            'Data Mining',
-    'cawg.ai_generative_training': 'Generative Training',
-    'cawg.ai_inference':           'AI Inference',
+    'c2pa.ai_generative_training': 'Generative AI Training',
+    'c2pa.ai_inference':           'AI Inference Usage',
+    'c2pa.ai_training':            'General AI Training',
+    'c2pa.data_mining':            'Data Mining & Scraping',
+    'cawg.ai_generative_training': 'Generative AI Training',
+    'cawg.ai_inference':           'AI Inference Usage',
   };
 
   grid.innerHTML = Object.entries(policy).map(([key, val]) => {
-    const use      = val?.use || val || '—';
+    const use      = val?.use || val || 'N/A';
     const useClass = use === 'notAllowed' ? 'notAllowed' : use === 'allowed' ? 'allowed' : 'constrained';
-    const useLabel = use === 'notAllowed' ? 'NOT ALLOWED' : use.toUpperCase();
+    const useLabel = use === 'notAllowed' ? 'RESTRICTED' : use.toUpperCase();
     return `
-      <div class="policy-item">
-        <span class="pol-label">${LABEL_MAP[key] || key.split('.').pop()}</span>
-        <span class="pol-val ${useClass}">${useLabel}</span>
+      <div class="data-item">
+        <span class="data-label">${LABEL_MAP[key] || key.split('.').pop()}</span>
+        <span class="data-val val-${useClass}">${useLabel}</span>
       </div>
     `;
   }).join('');
 
-  panel.style.display = 'block';
+  panel.classList.add('visible');
 }
 
 function renderRawJson(json) {
@@ -281,7 +305,7 @@ document.getElementById('json-toggle').addEventListener('click', () => {
   document.getElementById('json-viewer').classList.toggle('visible');
 });
 
-// History click → re-render
+// ── History click → re-render ─────────────────────────────────────────────────
 document.getElementById('history-list').addEventListener('click', e => {
   const item = e.target.closest('.hist-item');
   if (!item) return;
@@ -306,34 +330,43 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
   document.getElementById('result-state').classList.remove('visible');
   currentFile = null;
   actionBtn.disabled    = true;
-  actionBtn.textContent = 'SELECT A FILE';
+  actionBtn.textContent = 'AWAITING EVIDENCE';
 });
 
-// Utilities
+// ── Utilities ─────────────────────────────────────────────────────────────────
 function showResults() {
+  // Ensure the dashboard containers are visible for successful runs
+  document.querySelector('.dashboard-top').style.display = 'flex';
+  document.querySelector('.metrics-row').style.display = 'grid';
+  document.getElementById('json-toggle').style.display = 'block';
+  
   document.getElementById('idle-state').style.display = 'none';
   document.getElementById('result-state').classList.add('visible');
 }
 
 function resetResults() {
-  // Banners off
-  ['warn-no-manifest','warn-invalid','warn-partial','warn-remote'].forEach(id => {
-    document.getElementById(id).classList.remove('visible');
+  ['warn-no-manifest','warn-invalid','warn-partial','warn-remote', 'warn-sys-error'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('visible');
   });
+  
   document.getElementById('warn-dev-cert').style.display = 'none';
-  document.getElementById('cert-panel').style.display     = 'none';
-  document.getElementById('timeline-panel').style.display = 'none';
-  document.getElementById('ai-policy-panel').style.display= 'none';
+  document.getElementById('cert-panel').classList.remove('visible');
+  document.getElementById('timeline-panel').classList.remove('visible');
+  document.getElementById('ai-policy-panel').classList.remove('visible');
   document.getElementById('download-bar').classList.remove('visible');
   document.getElementById('json-viewer').classList.remove('visible');
   document.getElementById('result-state').classList.remove('visible');
+  
+  document.getElementById('gauge-fill').style.strokeDashoffset = 377;
+  document.getElementById('trust-score').textContent = "0";
   signedBlob = null;
 }
 
 function setLoading(on) {
-  actionBtn.disabled    = on;
-  actionBtn.textContent = on ? 'PROCESSING…' : (
-    currentMode === 'verify' ? `VERIFY: ${currentFile?.name}` : `SIGN: ${currentFile?.name}`
+  actionBtn.disabled = on;
+  actionBtn.textContent = on ? 'ANALYZING TELEMETRY...' : (
+    currentMode === 'verify' ? `RUN VERIFICATION` : `APPLY SIGNATURE`
   );
 }
 
@@ -343,5 +376,5 @@ function showBanner(id, msg) {
   el.classList.add('visible');
 }
 
-// Init history display
+// ── Init history display ──────────────────────────────────────────────────────
 updateHistory(sessionHistory);
