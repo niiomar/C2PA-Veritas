@@ -1,4 +1,5 @@
 export function renderHistoryItem(entry) {
+  
   // Format the status for CSS class mapping
   const statusClass = entry.status;
   
