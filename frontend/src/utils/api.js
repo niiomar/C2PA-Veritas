@@ -41,6 +41,7 @@ export async function signFile(file, opts = {}) {
     throw new Error(d.detail || 'Signing failed.');
   }
 
+  
   // Return blob + suggested filename from Content-Disposition
   const blob = await res.blob();
   const cd   = res.headers.get('Content-Disposition') || '';
