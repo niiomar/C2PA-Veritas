@@ -1,6 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;500;600;700;800&display=swap');
 
-/* ── Design Tokens ──────────────────────────────────────────────────────── */
+/* Design Tokens */
 :root {
   --bg:          #05070a;
   --surface:     #0d1117;
@@ -26,7 +26,7 @@
   --radius-sm:   6px;
 }
 
-/* ── Reset & Base ───────────────────────────────────────────────────────── */
+/* Reset & Base */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; width: 100vw; overflow: hidden; }
 
@@ -50,7 +50,7 @@ body {
   width: 100%;
 }
 
-/* ── Animations ─────────────────────────────────────────────────────────── */
+/* Animations */
 @keyframes dash-scroll { to { stroke-dashoffset: -20; } }
 @keyframes soft-pulse {
   0% { box-shadow: 0 0 0 0 rgba(var(--pulse-color), 0.4); }
@@ -59,7 +59,7 @@ body {
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────────  */
+/* Sidebar */
 .sidebar {
   background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 24px; z-index: 10; height: 100vh; overflow-y: auto;
@@ -175,7 +175,7 @@ body {
 .hist-bot span { display: flex; align-items: center; gap: 4px; }
 .hist-bot svg { width: 10px; height: 10px; stroke: var(--text-mid); }
 
-/* ── Main Workspace ─────────────────────────────────────────────────────── */
+/* Main Workspace */
 .main-view { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 40px; overflow-y: auto; position: relative; }
 
 #idle-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; opacity: 1; transition: .3s; margin: auto; }
