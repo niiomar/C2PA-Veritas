@@ -4,7 +4,7 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// ── Mount layout ────────────────────────────────────────────────────────────
+// Mount layout
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -12,14 +12,14 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// ── State ────────────────────────────────────────────────────────────────────
+// State
 let currentFile    = null;
 let currentMode    = 'verify';  
 let sessionHistory = [];
 let signedBlob     = null;
 let signedFilename = null;
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
+// DOM refs
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -27,7 +27,7 @@ const modeVerify = document.getElementById('mode-verify');
 const modeSigning= document.getElementById('mode-sign');
 const signOpts   = document.getElementById('sign-options');
 
-// ── File selection ───────────────────────────────────────────────────────────
+// File selection
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -47,7 +47,7 @@ function handleFile(file) {
   resetResults();
 }
 
-// ── Mode switching ───────────────────────────────────────────────────────────
+// Mode switching
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -62,7 +62,7 @@ function handleFile(file) {
   });
 });
 
-// ── Action ───────────────────────────────────────────────────────────────────
+// Action
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -87,7 +87,7 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// ── Verify flow ───────────────────────────────────────────────────────────────
+// Verify flow
 async function runVerify() {
   const data = await verifyFile(currentFile);
   if (data._rateLimited) {
@@ -113,7 +113,7 @@ async function runVerify() {
   updateHistory(sessionHistory);
 }
 
-// ── Sign flow ─────────────────────────────────────────────────────────────────
+// Sign flow
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -149,7 +149,7 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
 
-// ── Render helpers ────────────────────────────────────────────────────────────
+// Render helpers
 
 function renderVerdict(d) {
   const titleEl = document.getElementById('trust-title');
@@ -356,7 +356,7 @@ document.getElementById('json-toggle').addEventListener('click', (e) => {
   document.getElementById('json-viewer').classList.toggle('visible');
 });
 
-// ── History click → re-render ─────────────────────────────────────────────────
+// History click → re-render
 document.getElementById('history-list').addEventListener('click', e => {
   const item = e.target.closest('.hist-item');
   if (!item) return;
@@ -384,7 +384,7 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
   actionBtn.textContent = 'AWAITING EVIDENCE';
 });
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// Utilities
 function showResults() {
   document.querySelector('.trust-card').style.display = 'flex';
   document.querySelector('.kpi-strip').style.display = 'flex';
