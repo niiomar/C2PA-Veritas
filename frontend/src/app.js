@@ -14,7 +14,7 @@ document.getElementById('app').innerHTML = `
 
 // ── State ────────────────────────────────────────────────────────────────────
 let currentFile    = null;
-let currentMode    = 'verify';  // 'verify' | 'sign'
+let currentMode    = 'verify';  
 let sessionHistory = [];
 let signedBlob     = null;
 let signedFilename = null;
@@ -76,9 +76,10 @@ actionBtn.addEventListener('click', async () => {
     }
   } catch (err) {
     showBanner('warn-sys-error', `PIPELINE ERROR: ${err.message}`);
-    document.querySelector('.dashboard-top').style.display = 'none';
+    document.querySelector('.verdict-hero').style.display = 'none';
+    document.querySelector('.kpi-strip').style.display = 'none';
     document.querySelector('.metrics-row').style.display = 'none';
-    document.getElementById('json-toggle').style.display = 'none';
+    document.querySelector('.json-panel').style.display = 'none';
     document.getElementById('idle-state').style.display = 'none';
     document.getElementById('result-state').classList.add('visible');
   } finally {
@@ -133,6 +134,7 @@ async function runSign() {
     status:     'SIGNED',
     filename:   currentFile.name,
     media_type: currentFile.type || 'N/A',
+    manifests:  [{ assertions: [] }], 
     _idx:       sessionHistory.length,
     _time:      new Date().toLocaleTimeString(),
   });
@@ -150,48 +152,49 @@ document.getElementById('dl-btn').addEventListener('click', () => {
 // ── Render helpers ────────────────────────────────────────────────────────────
 
 function renderVerdict(d) {
-  const labelEl = document.getElementById('verdict-label');
-  const iconEl  = document.getElementById('status-icon');
-  const fillEl  = document.getElementById('gauge-fill');
+  const heroEl   = document.getElementById('verdict-hero');
+  const iconEl   = document.getElementById('hero-icon');
+  const titleEl  = document.getElementById('hero-title');
+  const subEl    = document.getElementById('hero-sub');
   
   const ICONS = {
-    VALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
-    INVALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
-    PARTIAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`,
-    NO_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
-    REMOTE_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>`
+    VALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+    INVALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    PARTIAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`,
+    NO_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+    REMOTE_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>`
   };
 
-  let fillPercent = 0;
-  if (d.status === 'VALID' || d.status === 'REMOTE_MANIFEST') fillPercent = 100;
-  else if (d.status === 'PARTIAL') fillPercent = 50;
-  else if (d.status === 'INVALID') fillPercent = 100;
-  else fillPercent = 5; 
-  
-  labelEl.textContent = d.status.replace('_', ' ');
-  labelEl.className = `verdict-status`;
-  
-  let colorVar = 'red';
-  if (d.status === 'VALID') colorVar = 'green';
-  else if (d.status === 'PARTIAL') colorVar = 'purple';
-  else if (d.status === 'REMOTE_MANIFEST') colorVar = 'blue';
-  else if (d.status === 'NO_MANIFEST') colorVar = 'amber';
-  
-  labelEl.style.color = `var(--${colorVar})`;
-  
-  iconEl.className = `score-icon ${d.status}`;
+  const SUBS = {
+    VALID: "Cryptographic signature verified and intact.",
+    INVALID: "Manifest present but validation failed.",
+    PARTIAL: "Manifest contains validation errors.",
+    NO_MANIFEST: "Asset contains no digital provenance data.",
+    REMOTE_MANIFEST: "Credentials hosted remotely."
+  };
+
+  heroEl.className = `verdict-hero hero-${d.status}`;
   iconEl.innerHTML = ICONS[d.status] || ICONS.NO_MANIFEST;
+  titleEl.textContent = d.status === 'VALID' ? 'FULLY VERIFIED' : d.status.replace('_', ' ');
+  subEl.textContent = SUBS[d.status];
 
-  fillEl.className.baseVal = `gauge-fill ${d.status}`;
-  setTimeout(() => {
-    fillEl.style.strokeDashoffset = 377 - (377 * (fillPercent / 100));
-  }, 100);
+  // Populate KPI Strip
+  const mCount = d.manifests?.length || 0;
+  let aCount = 0;
+  if(d.raw_manifest_json && d.raw_manifest_json.manifests) {
+      aCount = Object.keys(d.raw_manifest_json.manifests).reduce((acc, k) => acc + (d.raw_manifest_json.manifests[k].assertions?.length || 0), 0);
+  }
+  document.getElementById('kpi-manifests').textContent  = mCount;
+  document.getElementById('kpi-assertions').textContent = aCount;
+  document.getElementById('kpi-certs').textContent      = (d.active_manifest && d.active_manifest.issuer) ? '1' : '0';
+  document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
+  // Evidence Summary
   document.getElementById('sum-signal').textContent   = d.signal || 'None';
-  document.getElementById('sum-time').textContent     = `${d.processing_time_sec}s`;
   document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded in asset' : 'Not embedded';
   document.getElementById('sum-sha').textContent      = d.file_sha256 ? d.file_sha256.slice(0, 20) + '…' : 'None';
 
+  // Banners
   document.getElementById('warn-no-manifest').classList.toggle('visible', d.status === 'NO_MANIFEST');
   document.getElementById('warn-invalid').classList.toggle('visible',     d.status === 'INVALID');
   document.getElementById('warn-partial').classList.toggle('visible',     d.status === 'PARTIAL');
@@ -200,11 +203,10 @@ function renderVerdict(d) {
 
 function renderMetrics(d) {
   const m = d.active_manifest;
-  document.getElementById('mc-issuer').textContent    = m?.issuer || 'N/A';
-  document.getElementById('mc-alg').textContent       = m?.signing_algorithm || 'N/A';
-  document.getElementById('mc-manifests').textContent = d.manifests?.length ?? '0';
   document.getElementById('mc-actions').textContent   = d.edit_timeline?.length ?? '0';
   document.getElementById('mc-type').textContent      = d.media_type || 'N/A';
+  document.getElementById('mc-alg').textContent       = m?.signing_algorithm || 'N/A';
+  document.getElementById('mc-issuer').textContent    = m?.issuer || 'N/A';
 }
 
 function renderCertPanel(d) {
@@ -217,20 +219,16 @@ function renderCertPanel(d) {
 
   if (isDev) document.getElementById('warn-dev-cert').style.display = 'flex';
 
-  let serialDisplay = m.cert_serial;
-  if (serialDisplay && serialDisplay.length > 20) {
-      serialDisplay = serialDisplay.slice(0, 8) + '...' + serialDisplay.slice(-8);
-  }
+  let fp = d.file_sha256 ? d.file_sha256.slice(0,16).toUpperCase() : 'N/A';
 
   card.innerHTML = `
-    <div class="cert-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+    <div class="cert-grid">
+      <div class="cg-item"><span class="cg-label">Issuer</span><span class="cg-val" style="color:var(--blue)">${m.issuer || 'Unknown'}</span></div>
+      <div class="cg-item"><span class="cg-label">Subject</span><span class="cg-val">${m.issuer || 'Self-Signed'}</span></div>
+      <div class="cg-item"><span class="cg-label">Algorithm</span><span class="cg-val">${m.signing_algorithm || 'N/A'}</span></div>
+      <div class="cg-item"><span class="cg-label">Fingerprint</span><span class="cg-val">${fp}...</span></div>
+      <div class="cg-item" style="grid-column: span 2"><span class="cg-label">Serial Number</span><span class="cg-val" style="color:var(--text-dim)">${m.cert_serial || 'N/A'}</span></div>
     </div>
-    <div class="cert-info">
-      <div class="cert-issuer">${m.issuer || 'Unknown Identity'}</div>
-      ${serialDisplay ? `<div class="cert-serial" title="${m.cert_serial}">Serial: ${serialDisplay}</div>` : ''}
-    </div>
-    <div class="cert-alg">${m.signing_algorithm || 'N/A'}</div>
   `;
   panel.classList.add('visible');
 }
@@ -239,28 +237,56 @@ function renderTimeline(d) {
   const tl = d.edit_timeline;
   if (!tl || tl.length === 0) return;
 
-  const panel    = document.getElementById('timeline-panel');
-  const timeline = document.getElementById('timeline');
+  const panel = document.getElementById('timeline-panel');
+  const graph = document.getElementById('pg-container');
 
-  timeline.innerHTML = tl.map(action => {
-    const action_label = action.action || 'Unknown Event';
-    const agent  = action.software_agent ? `<div class="tl-agent">Generated by ${action.software_agent}</div>` : '';
-    const when   = action.when ? `<div class="tl-when">${new Date(action.when).toLocaleString()}</div>` : '';
+  // Build the horizontal nodes
+  let nodesHTML = '';
+  
+  // 1. Origin
+  nodesHTML += `
+    <div class="pg-node origin">
+      <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></div>
+      <span class="pg-label">Origin</span>
+      <span class="pg-sub">Capture/Creation</span>
+    </div>
+  `;
 
-    return `
-      <div class="tl-item">
-        <div class="tl-dot"></div>
-        <div class="tl-content">
-          <div class="tl-header">
-            <span class="tl-action">${action_label}</span>
-            ${when}
-          </div>
-          ${agent}
+  // 2. Map actions to middle nodes
+  tl.forEach(action => {
+    let type = action.action.includes('created') ? 'origin' : 'edit';
+    if(type === 'edit') {
+      nodesHTML += `
+        <div class="pg-node edit">
+          <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></div>
+          <span class="pg-label">${action.action.split('.').pop().toUpperCase()}</span>
+          <span class="pg-sub" title="${action.software_agent}">${action.software_agent ? action.software_agent.split(' ')[0] : 'Editor'}</span>
         </div>
+      `;
+    }
+  });
+
+  // 3. Signed
+  if (d.status !== 'NO_MANIFEST') {
+    nodesHTML += `
+      <div class="pg-node sign">
+        <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+        <span class="pg-label">Signed</span>
+        <span class="pg-sub">${d.active_manifest?.issuer ? d.active_manifest.issuer.split(' ')[0] : 'Credentials'}</span>
       </div>
     `;
-  }).join('');
+  }
 
+  // 4. Verified
+  nodesHTML += `
+    <div class="pg-node verify">
+      <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
+      <span class="pg-label">Verified</span>
+      <span class="pg-sub">C2PA Veritas</span>
+    </div>
+  `;
+
+  graph.innerHTML = nodesHTML;
   panel.classList.add('visible');
 }
 
@@ -277,7 +303,6 @@ function renderAiPolicy(d) {
     'c2pa.ai_training':            'General AI Training',
     'c2pa.data_mining':            'Data Mining & Scraping',
     'cawg.ai_generative_training': 'Generative AI Training',
-    'cawg.ai_inference':           'AI Inference Usage',
   };
 
   grid.innerHTML = Object.entries(policy).map(([key, val]) => {
@@ -297,10 +322,22 @@ function renderAiPolicy(d) {
 
 function renderRawJson(json) {
   if (!json) return;
-  document.getElementById('json-content').textContent = JSON.stringify(json, null, 2);
+  // Simple regex for basic JSON syntax highlighting
+  let str = JSON.stringify(json, null, 2);
+  str = str.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+      let cls = 'number';
+      if (/^"/.test(match)) {
+          if (/:$/.test(match)) { cls = 'key'; } 
+          else { cls = 'string'; }
+      } else if (/true|false/.test(match)) { cls = 'boolean'; } 
+      else if (/null/.test(match)) { cls = 'null'; }
+      return '<span class="json-' + cls + '">' + match + '</span>';
+  });
+  document.getElementById('json-content').innerHTML = str;
 }
 
-document.getElementById('json-toggle').addEventListener('click', () => {
+document.getElementById('json-toggle').addEventListener('click', (e) => {
+  e.currentTarget.classList.toggle('open');
   document.getElementById('json-viewer').classList.toggle('visible');
 });
 
@@ -334,9 +371,10 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function showResults() {
-  document.querySelector('.dashboard-top').style.display = 'flex';
+  document.querySelector('.verdict-hero').style.display = 'flex';
+  document.querySelector('.kpi-strip').style.display = 'flex';
   document.querySelector('.metrics-row').style.display = 'grid';
-  document.getElementById('json-toggle').style.display = 'block';
+  document.querySelector('.json-panel').style.display = 'block';
   
   document.getElementById('idle-state').style.display = 'none';
   document.getElementById('result-state').classList.add('visible');
@@ -353,11 +391,11 @@ function resetResults() {
   document.getElementById('timeline-panel').classList.remove('visible');
   document.getElementById('ai-policy-panel').classList.remove('visible');
   document.getElementById('download-bar').classList.remove('visible');
+  
+  document.getElementById('json-toggle').classList.remove('open');
   document.getElementById('json-viewer').classList.remove('visible');
   document.getElementById('result-state').classList.remove('visible');
   
-  document.getElementById('gauge-fill').style.strokeDashoffset = 377;
-  document.getElementById('status-icon').innerHTML = "";
   signedBlob = null;
 }
 
