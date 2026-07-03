@@ -76,7 +76,7 @@ actionBtn.addEventListener('click', async () => {
     }
   } catch (err) {
     showBanner('warn-sys-error', `PIPELINE ERROR: ${err.message}`);
-    document.querySelector('.verdict-hero').style.display = 'none';
+    document.querySelector('.trust-card').style.display = 'none';
     document.querySelector('.kpi-strip').style.display = 'none';
     document.querySelector('.metrics-row').style.display = 'none';
     document.querySelector('.json-panel').style.display = 'none';
@@ -152,33 +152,57 @@ document.getElementById('dl-btn').addEventListener('click', () => {
 // ── Render helpers ────────────────────────────────────────────────────────────
 
 function renderVerdict(d) {
-  const heroEl   = document.getElementById('verdict-hero');
-  const iconEl   = document.getElementById('hero-icon');
-  const titleEl  = document.getElementById('hero-title');
-  const subEl    = document.getElementById('hero-sub');
+  const titleEl = document.getElementById('trust-title');
+  const subEl   = document.getElementById('trust-sub');
+  const iconEl  = document.getElementById('status-icon');
+  const fillEl  = document.getElementById('gauge-fill');
   
   const ICONS = {
-    VALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
-    INVALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
-    PARTIAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`,
-    NO_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
-    REMOTE_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>`
+    VALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+    INVALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    PARTIAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`,
+    NO_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+    REMOTE_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>`
   };
 
-  const SUBS = {
-    VALID: "Cryptographic signature verified and intact.",
-    INVALID: "Manifest present but validation failed.",
-    PARTIAL: "Manifest contains validation errors.",
-    NO_MANIFEST: "Asset contains no digital provenance data.",
-    REMOTE_MANIFEST: "Credentials hosted remotely."
+  const META = {
+    VALID: { sub: "Cryptographic signature verified and intact.", conf: "High", int: "Intact", chain: "Verified" },
+    INVALID: { sub: "Manifest present but validation failed.", conf: "Zero", int: "Compromised", chain: "Broken" },
+    PARTIAL: { sub: "Manifest contains validation errors.", conf: "Medium", int: "Partial", chain: "Incomplete" },
+    NO_MANIFEST: { sub: "Asset contains no digital provenance data.", conf: "Unknown", int: "Unverified", chain: "Absent" },
+    REMOTE_MANIFEST: { sub: "Credentials hosted remotely.", conf: "High", int: "Intact", chain: "Cloud-Verified" }
   };
 
-  heroEl.className = `verdict-hero hero-${d.status}`;
-  iconEl.innerHTML = ICONS[d.status] || ICONS.NO_MANIFEST;
+  let fillPercent = 0;
+  if (d.status === 'VALID' || d.status === 'REMOTE_MANIFEST') fillPercent = 100;
+  else if (d.status === 'PARTIAL') fillPercent = 50;
+  else if (d.status === 'INVALID') fillPercent = 100;
+  else fillPercent = 5; 
+  
   titleEl.textContent = d.status === 'VALID' ? 'FULLY VERIFIED' : d.status.replace('_', ' ');
-  subEl.textContent = SUBS[d.status];
+  titleEl.className = `trust-title title-${d.status}`;
+  subEl.textContent = META[d.status].sub;
+  
+  document.getElementById('tm-conf').textContent = META[d.status].conf;
+  document.getElementById('tm-int').textContent = META[d.status].int;
+  document.getElementById('tm-chain').textContent = META[d.status].chain;
+  
+  ['tm-conf', 'tm-int', 'tm-chain'].forEach(id => {
+      const el = document.getElementById(id);
+      el.className = 'tm-val'; 
+      if (el.textContent === 'Zero' || el.textContent === 'Compromised' || el.textContent === 'Broken') el.classList.add('color-red');
+      if (el.textContent === 'Medium' || el.textContent === 'Partial' || el.textContent === 'Incomplete') el.classList.add('color-amber');
+      if (el.textContent === 'High' || el.textContent === 'Intact' || el.textContent === 'Verified') el.classList.add('color-green');
+  });
+  
+  iconEl.className = `score-icon ${d.status}`;
+  iconEl.innerHTML = ICONS[d.status] || ICONS.NO_MANIFEST;
 
-  // Populate KPI Strip
+  fillEl.className.baseVal = `gauge-fill ${d.status}`;
+  setTimeout(() => {
+    fillEl.style.strokeDashoffset = 377 - (377 * (fillPercent / 100));
+  }, 100);
+
   const mCount = d.manifests?.length || 0;
   let aCount = 0;
   if(d.raw_manifest_json && d.raw_manifest_json.manifests) {
@@ -189,12 +213,10 @@ function renderVerdict(d) {
   document.getElementById('kpi-certs').textContent      = (d.active_manifest && d.active_manifest.issuer) ? '1' : '0';
   document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
-  // Evidence Summary
   document.getElementById('sum-signal').textContent   = d.signal || 'None';
   document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded in asset' : 'Not embedded';
   document.getElementById('sum-sha').textContent      = d.file_sha256 ? d.file_sha256.slice(0, 20) + '…' : 'None';
 
-  // Banners
   document.getElementById('warn-no-manifest').classList.toggle('visible', d.status === 'NO_MANIFEST');
   document.getElementById('warn-invalid').classList.toggle('visible',     d.status === 'INVALID');
   document.getElementById('warn-partial').classList.toggle('visible',     d.status === 'PARTIAL');
@@ -206,7 +228,6 @@ function renderMetrics(d) {
   document.getElementById('mc-actions').textContent   = d.edit_timeline?.length ?? '0';
   document.getElementById('mc-type').textContent      = d.media_type || 'N/A';
   document.getElementById('mc-alg').textContent       = m?.signing_algorithm || 'N/A';
-  document.getElementById('mc-issuer').textContent    = m?.issuer || 'N/A';
 }
 
 function renderCertPanel(d) {
@@ -240,10 +261,8 @@ function renderTimeline(d) {
   const panel = document.getElementById('timeline-panel');
   const graph = document.getElementById('pg-container');
 
-  // Build the horizontal nodes
   let nodesHTML = '';
   
-  // 1. Origin
   nodesHTML += `
     <div class="pg-node origin">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></div>
@@ -252,7 +271,6 @@ function renderTimeline(d) {
     </div>
   `;
 
-  // 2. Map actions to middle nodes
   tl.forEach(action => {
     let type = action.action.includes('created') ? 'origin' : 'edit';
     if(type === 'edit') {
@@ -266,7 +284,6 @@ function renderTimeline(d) {
     }
   });
 
-  // 3. Signed
   if (d.status !== 'NO_MANIFEST') {
     nodesHTML += `
       <div class="pg-node sign">
@@ -277,7 +294,6 @@ function renderTimeline(d) {
     `;
   }
 
-  // 4. Verified
   nodesHTML += `
     <div class="pg-node verify">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
@@ -322,7 +338,6 @@ function renderAiPolicy(d) {
 
 function renderRawJson(json) {
   if (!json) return;
-  // Simple regex for basic JSON syntax highlighting
   let str = JSON.stringify(json, null, 2);
   str = str.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
       let cls = 'number';
@@ -371,7 +386,7 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function showResults() {
-  document.querySelector('.verdict-hero').style.display = 'flex';
+  document.querySelector('.trust-card').style.display = 'flex';
   document.querySelector('.kpi-strip').style.display = 'flex';
   document.querySelector('.metrics-row').style.display = 'grid';
   document.querySelector('.json-panel').style.display = 'block';
@@ -396,6 +411,8 @@ function resetResults() {
   document.getElementById('json-viewer').classList.remove('visible');
   document.getElementById('result-state').classList.remove('visible');
   
+  document.getElementById('gauge-fill').style.strokeDashoffset = 377;
+  document.getElementById('status-icon').innerHTML = "";
   signedBlob = null;
 }
 
