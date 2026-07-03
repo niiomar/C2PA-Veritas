@@ -175,9 +175,7 @@ async def history_by_hash(file_hash: str):
     return {"entries": entries}
 
 
-# ---------------------------------------------------------------------------
 # Static File Serving
-# ---------------------------------------------------------------------------
 
 # Point FastAPI to the folder where Vite is actually putting the files
 _static = Path(__file__).parent / "static"
