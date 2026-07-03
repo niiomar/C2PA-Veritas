@@ -175,19 +175,25 @@ async def history_by_hash(file_hash: str):
     return {"entries": entries}
 
 
+# ---------------------------------------------------------------------------
 # Static File Serving
+# ---------------------------------------------------------------------------
 
-# Point directly to the Vite build directory instead of a local 'static' folder
-_static = Path(__file__).parent.parent / "frontend" / "dist"
+# Point FastAPI to the folder where Vite is actually putting the files
+_static = Path(__file__).parent / "static"
 
 if _static.exists():
-    # Mount /assets so Vite-built JS/CSS chunks resolve correctly
+    # Mount the /assets folder so JS and CSS load correctly
     _assets = _static / "assets"
     if _assets.exists():
         app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
 
+    # Serve the main HTML file at the root URL
     @app.get("/")
     async def serve_frontend():
         return FileResponse(str(_static / "index.html"))
 else:
-    logger.warning(f"Frontend build directory not found at {_static}. Please run 'npm run build' inside the frontend directory.")
+    logger.warning(
+        f"Frontend build directory not found at {_static}. "
+        "Check your Vite configuration."
+    )
