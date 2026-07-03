@@ -4,7 +4,7 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// Mount layout
+// ── Mount layout ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -12,14 +12,14 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// State 
+// ── State ────────────────────────────────────────────────────────────────────
 let currentFile    = null;
 let currentMode    = 'verify';  // 'verify' | 'sign'
 let sessionHistory = [];
 let signedBlob     = null;
 let signedFilename = null;
 
-// DOM refs
+// ── DOM refs ─────────────────────────────────────────────────────────────────
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -27,7 +27,7 @@ const modeVerify = document.getElementById('mode-verify');
 const modeSigning= document.getElementById('mode-sign');
 const signOpts   = document.getElementById('sign-options');
 
-// File selection
+// ── File selection ───────────────────────────────────────────────────────────
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -47,7 +47,7 @@ function handleFile(file) {
   resetResults();
 }
 
-// Mode switching
+// ── Mode switching ───────────────────────────────────────────────────────────
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -62,7 +62,7 @@ function handleFile(file) {
   });
 });
 
-// Action 
+// ── Action ───────────────────────────────────────────────────────────────────
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -75,16 +75,10 @@ actionBtn.addEventListener('click', async () => {
       await runSign();
     }
   } catch (err) {
-    
-    // Show the dedicated system error banner
     showBanner('warn-sys-error', `PIPELINE ERROR: ${err.message}`);
-    
-    // Hide the dashboard data containers so they don't look broken
     document.querySelector('.dashboard-top').style.display = 'none';
     document.querySelector('.metrics-row').style.display = 'none';
     document.getElementById('json-toggle').style.display = 'none';
-    
-    // Switch from idle to result state
     document.getElementById('idle-state').style.display = 'none';
     document.getElementById('result-state').classList.add('visible');
   } finally {
@@ -92,7 +86,7 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// Verify flow
+// ── Verify flow ───────────────────────────────────────────────────────────────
 async function runVerify() {
   const data = await verifyFile(currentFile);
   if (data._rateLimited) {
@@ -109,7 +103,6 @@ async function runVerify() {
   renderRawJson(data.raw_manifest_json);
   showResults();
 
-  // History
   const entry = {
     ...data,
     _idx:  sessionHistory.length,
@@ -119,7 +112,7 @@ async function runVerify() {
   updateHistory(sessionHistory);
 }
 
-// Sign flow 
+// ── Sign flow ─────────────────────────────────────────────────────────────────
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -132,12 +125,10 @@ async function runSign() {
   signedBlob     = result.blob;
   signedFilename = result.filename;
 
-  // Show download bar
   const dlBar = document.getElementById('download-bar');
   dlBar.classList.add('visible');
   showResults();
 
-  // History placeholder
   sessionHistory.unshift({
     status:     'SIGNED',
     filename:   currentFile.name,
@@ -148,7 +139,6 @@ async function runSign() {
   updateHistory(sessionHistory);
 }
 
-// Download signed file
 document.getElementById('dl-btn').addEventListener('click', () => {
   if (!signedBlob) return;
   const url = URL.createObjectURL(signedBlob);
@@ -157,50 +147,51 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
 
-// Render helpers
+// ── Render helpers ────────────────────────────────────────────────────────────
 
 function renderVerdict(d) {
   const labelEl = document.getElementById('verdict-label');
-  const scoreEl = document.getElementById('trust-score');
+  const iconEl  = document.getElementById('status-icon');
   const fillEl  = document.getElementById('gauge-fill');
   
-  // Calculate Trust Score based on Status
-  let score = 0;
-  if (d.status === 'VALID') score = 100;
-  else if (d.status === 'REMOTE_MANIFEST') score = 80;
-  else if (d.status === 'PARTIAL') score = 60;
-  else score = 0; // INVALID or NO_MANIFEST
+  const ICONS = {
+    VALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+    INVALID: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`,
+    PARTIAL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`,
+    NO_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+    REMOTE_MANIFEST: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>`
+  };
+
+  let fillPercent = 0;
+  if (d.status === 'VALID' || d.status === 'REMOTE_MANIFEST') fillPercent = 100;
+  else if (d.status === 'PARTIAL') fillPercent = 50;
+  else if (d.status === 'INVALID') fillPercent = 100;
+  else fillPercent = 5; 
   
   labelEl.textContent = d.status.replace('_', ' ');
-  labelEl.style.color = `var(--${
-    score === 100 ? 'green' : score >= 60 ? 'purple' : score === 0 && d.status === 'NO_MANIFEST' ? 'amber' : 'red'
-  })`;
+  labelEl.className = `verdict-status`;
   
-  // Animate numbers up
-  let currentScore = 0;
-  const interval = setInterval(() => {
-    if (currentScore >= score) {
-      scoreEl.textContent = score;
-      clearInterval(interval);
-    } else {
-      currentScore += 2;
-      scoreEl.textContent = currentScore;
-    }
-  }, 20);
+  let colorVar = 'red';
+  if (d.status === 'VALID') colorVar = 'green';
+  else if (d.status === 'PARTIAL') colorVar = 'purple';
+  else if (d.status === 'REMOTE_MANIFEST') colorVar = 'blue';
+  else if (d.status === 'NO_MANIFEST') colorVar = 'amber';
+  
+  labelEl.style.color = `var(--${colorVar})`;
+  
+  iconEl.className = `score-icon ${d.status}`;
+  iconEl.innerHTML = ICONS[d.status] || ICONS.NO_MANIFEST;
 
-  // Animate Gauge SVG (Circumference is ~377)
   fillEl.className.baseVal = `gauge-fill ${d.status}`;
   setTimeout(() => {
-    fillEl.style.strokeDashoffset = 377 - (377 * (score / 100));
+    fillEl.style.strokeDashoffset = 377 - (377 * (fillPercent / 100));
   }, 100);
 
-  // Evidence Summary
   document.getElementById('sum-signal').textContent   = d.signal || 'None';
   document.getElementById('sum-time').textContent     = `${d.processing_time_sec}s`;
   document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded in asset' : 'Not embedded';
   document.getElementById('sum-sha').textContent      = d.file_sha256 ? d.file_sha256.slice(0, 20) + '…' : 'None';
 
-  // Banners
   document.getElementById('warn-no-manifest').classList.toggle('visible', d.status === 'NO_MANIFEST');
   document.getElementById('warn-invalid').classList.toggle('visible',     d.status === 'INVALID');
   document.getElementById('warn-partial').classList.toggle('visible',     d.status === 'PARTIAL');
@@ -226,11 +217,18 @@ function renderCertPanel(d) {
 
   if (isDev) document.getElementById('warn-dev-cert').style.display = 'flex';
 
+  let serialDisplay = m.cert_serial;
+  if (serialDisplay && serialDisplay.length > 20) {
+      serialDisplay = serialDisplay.slice(0, 8) + '...' + serialDisplay.slice(-8);
+  }
+
   card.innerHTML = `
-    <div class="cert-icon">🔑</div>
+    <div class="cert-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+    </div>
     <div class="cert-info">
       <div class="cert-issuer">${m.issuer || 'Unknown Identity'}</div>
-      ${m.cert_serial ? `<div class="cert-serial">Serial: ${m.cert_serial}</div>` : ''}
+      ${serialDisplay ? `<div class="cert-serial" title="${m.cert_serial}">Serial: ${serialDisplay}</div>` : ''}
     </div>
     <div class="cert-alg">${m.signing_algorithm || 'N/A'}</div>
   `;
@@ -306,7 +304,7 @@ document.getElementById('json-toggle').addEventListener('click', () => {
   document.getElementById('json-viewer').classList.toggle('visible');
 });
 
-// History click → re-render 
+// ── History click → re-render ─────────────────────────────────────────────────
 document.getElementById('history-list').addEventListener('click', e => {
   const item = e.target.closest('.hist-item');
   if (!item) return;
@@ -334,10 +332,8 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
   actionBtn.textContent = 'AWAITING EVIDENCE';
 });
 
-// Utilities
+// ── Utilities ─────────────────────────────────────────────────────────────────
 function showResults() {
-  
-  // Ensure the dashboard containers are visible for successful runs
   document.querySelector('.dashboard-top').style.display = 'flex';
   document.querySelector('.metrics-row').style.display = 'grid';
   document.getElementById('json-toggle').style.display = 'block';
@@ -361,7 +357,7 @@ function resetResults() {
   document.getElementById('result-state').classList.remove('visible');
   
   document.getElementById('gauge-fill').style.strokeDashoffset = 377;
-  document.getElementById('trust-score').textContent = "0";
+  document.getElementById('status-icon').innerHTML = "";
   signedBlob = null;
 }
 
@@ -378,5 +374,4 @@ function showBanner(id, msg) {
   el.classList.add('visible');
 }
 
-// Init history display
 updateHistory(sessionHistory);
