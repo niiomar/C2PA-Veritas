@@ -1,191 +1,251 @@
-"""
-C2PA-Veritas FastAPI Backend
-"""
-import dataclasses
-import json
-import logging
-import os
-import time
-from contextlib import asynccontextmanager
+from dotenv import load_dotenv
 from pathlib import Path
 
-from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, Header, status
+env_path = Path(__file__).parent / ".env"
+loaded = load_dotenv(dotenv_path=env_path)
+print(f"[Config] .env loaded: {loaded} (path: {env_path})")
+
+import logging
+import time
+import os
+import cv2
+import tempfile
+from contextlib import asynccontextmanager
+from PIL import Image
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-from core.audit import get_by_hash, get_recent, log_check, sha256_of_bytes
-from core.extractor import ProvenanceReport, extract_provenance
-from core.signer import sign_media
+from model import analyze_frame, get_models
+from auth import verify_api_key
+import audit
 
-load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-VERSION = "1.0.0"
-SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".mp4", ".mov", ".pdf"}
+MODEL_VERSION = "2.0.0"
+SUPPORTED_EXTENSIONS = ('.mp4', '.avi', '.mov', '.mkv', '.webm', '.jpg', '.jpeg', '.png', '.webp', '.bmp')
 
-CORS_ORIGINS = [o.strip() for o in os.getenv(
-    "CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
-).split(",")]
-
-API_KEY = os.getenv("API_KEY", "").strip()
-
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-KEY")):
-    if not API_KEY:
-        return
-    if not x_api_key or x_api_key != API_KEY:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key.")
-
-
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("C2PA-Veritas starting.")
+    logger.info("Initializing neural weights...")
+    get_models()
     yield
-    logger.info("C2PA-Veritas shutdown.")
+    logger.info("Shutting down.")
 
-app = FastAPI(title="C2PA-Veritas", version=VERSION, lifespan=lifespan)
+
+app = FastAPI(title="ViT-CORE-FORENSICS API", version=MODEL_VERSION, lifespan=lifespan)
+
+# Security: Explicit origins for local Vite development and cross-port traffic
+CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
+]
+
+# Merge any additional origins from .env
+env_cors = os.getenv("CORS_ORIGINS", "")
+if env_cors:
+    CORS_ORIGINS.extend([o.strip() for o in env_cors.split(",") if o.strip()])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = CORS_ORIGINS,
-    allow_credentials = True,
-    allow_methods     = ["GET", "POST"],
-    allow_headers     = ["Content-Type", "X-API-KEY"],
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows OPTIONS pre-flight checks required by browsers
+    allow_headers=["*"],  # Allows custom headers like X-API-KEY
 )
 
 
 # ---------------------------------------------------------------------------
-# Serialisation helper (dataclasses → JSON-safe dict)
+# Frame extraction
 # ---------------------------------------------------------------------------
 
-def _report_to_dict(report: ProvenanceReport) -> dict:
-    d = dataclasses.asdict(report)
-    d["status"] = report.status.value
-    return d
+async def extract_frames_to_pil(upload_file: UploadFile, content: bytes, num_frames=10):
+    """Safely extracts frames using dynamic file suffix and converts to PIL Images."""
+    file_suffix = Path(upload_file.filename).suffix.lower()
+    if not file_suffix:
+        file_suffix = ".mp4"
+
+    frames = []
+    with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if total_frames <= 0:  # Static image fallback
+            cap.release()
+            img = cv2.imread(tmp_path)
+            if img is not None:
+                frames.append(Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)))
+            return frames
+
+        step = max(1, total_frames // num_frames)
+        for i in range(num_frames):
+            target = i * step
+            if target >= total_frames:
+                break
+            cap.set(cv2.CAP_PROP_POS_FRAMES, target)
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                frames.append(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
+        cap.release()
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    return frames
+
+
+# ---------------------------------------------------------------------------
+# Core analysis (shared by single + batch endpoints)
+# ---------------------------------------------------------------------------
+
+async def _run_analysis(file: UploadFile, content: bytes, explain: bool) -> dict:
+    start_time = time.time()
+    filename_lower = (file.filename or "").lower()
+
+    if not filename_lower.endswith(SUPPORTED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail=f"Unsupported media format: {file.filename}")
+
+    frames = await extract_frames_to_pil(file, content)
+    if not frames:
+        raise HTTPException(status_code=400, detail=f"Could not extract frames from {file.filename}.")
+
+    frame_data = []
+    heatmaps = []
+
+    for frame in frames:
+        prob, face_detected, face_quality, heatmap = analyze_frame(frame, generate_explainability=explain)
+        frame_data.append({
+            "probability": prob,
+            "face_detected": face_detected,
+            "quality": face_quality,
+        })
+        if heatmap:
+            heatmaps.append(heatmap)
+
+    probs = [f["probability"] for f in frame_data]
+    weights = [abs(p - 0.5) for p in probs]
+    weight_sum = sum(weights)
+
+    agg_prob = (sum(p * w for p, w in zip(probs, weights)) / weight_sum
+                if weight_sum > 0 else sum(probs) / len(probs))
+    is_fake = agg_prob >= 0.5
+
+    faces_found = any(f["face_detected"] for f in frame_data)
+
+    # Conservative aggregation: report the WORST quality seen across all
+    # frames where a face was detected, not just the first one. A single
+    # blurry frame in an otherwise sharp video should still be flagged.
+    quality_statuses = [f["quality"]["status"] for f in frame_data if f["face_detected"]]
+    if quality_statuses:
+        from model import QUALITY_RANK
+        worst_status = min(quality_statuses, key=lambda s: QUALITY_RANK.get(s, 0))
+        final_quality_status = worst_status
+    else:
+        final_quality_status = "N/A"
+
+    result = {
+        "verdict": "FAKE" if is_fake else "REAL",
+        "confidence": round((agg_prob if is_fake else 1 - agg_prob) * 100, 1),
+        "probability": round(float(agg_prob), 4),
+        "processing_time_sec": round(time.time() - start_time, 2),
+        "face_detected": faces_found,
+        "face_quality": final_quality_status,
+        "type": filename_lower.split('.')[-1],
+        "frames_analyzed": len(probs),
+        "is_low_confidence": (0.4 < agg_prob < 0.6),
+        "explainability_maps": heatmaps,
+        "filename": file.filename,
+    }
+
+    file_hash = audit.log_analysis(content, file.filename, result, model_version=MODEL_VERSION)
+    result["file_sha256"] = file_hash
+
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "version": VERSION}
-
-
-@app.post("/api/v1/verify", dependencies=[Depends(verify_api_key)])
-async def verify(
-    file: UploadFile = File(...),
-    trust_anchors: str | None = Form(default=None, description="PEM-encoded trust anchors (optional)"),
-):
-    """
-    Verify the C2PA provenance of a media file.
-
-    Returns a full ProvenanceReport including:
-    - Validation status (VALID / INVALID / NO_MANIFEST / PARTIAL)
-    - Edit history timeline
-    - Issuer / certificate chain info
-    - AI training policy assertions
-    - Raw manifest JSON
-    """
-    start = time.time()
-    ext   = Path(file.filename or "").suffix.lower()
-
-    if ext not in SUPPORTED_EXTS:
-        raise HTTPException(400, f"Unsupported file type. Supported: {', '.join(sorted(SUPPORTED_EXTS))}")
-
+@app.post("/api/v1/analyze", dependencies=[Depends(verify_api_key)])
+async def analyze_media(file: UploadFile = File(...), explain: bool = Query(default=True)):
+    logger.info(f"Analyzing asset: {file.filename}")
     content = await file.read()
-    if len(content) > 200 * 1024 * 1024:
-        raise HTTPException(413, "File too large. Maximum is 200MB.")
-
-    sha = sha256_of_bytes(content)
-    logger.info(f"Verifying: {file.filename} ({len(content) // 1024}KB) sha256={sha[:16]}...")
-
-    report = extract_provenance(
-        file_bytes         = content,
-        filename           = file.filename or "upload",
-        file_sha256        = sha,
-        trust_anchors_pem  = trust_anchors,
-    )
-
-    processing_sec = round(time.time() - start, 2)
-    log_check(content, file.filename or "upload", report, processing_sec)
-
-    result = _report_to_dict(report)
-    result["processing_time_sec"] = processing_sec
-    return result
-
-
-@app.post("/api/v1/sign", dependencies=[Depends(verify_api_key)])
-async def sign(
-    file:            UploadFile = File(...),
-    action:          str        = Form(default="c2pa.created"),
-    software_agent:  str | None = Form(default=None),
-    digital_source:  str        = Form(default="http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"),
-    no_ai_training:  bool       = Form(default=True),
-    claim_generator: str        = Form(default="C2PA-Veritas/1.0"),
-):
-    """
-    Sign a media file with a C2PA manifest using a development certificate.
-
-    Returns the signed file as a binary download.
-    NOTE: Self-signed certs will not pass public C2PA trust validation.
-    Use the returned file to test the /verify endpoint's full round-trip.
-    """
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in SUPPORTED_EXTS:
-        raise HTTPException(400, f"Unsupported file type.")
-
-    content = await file.read()
-    logger.info(f"Signing: {file.filename}")
-
     try:
-        signed_bytes = sign_media(
-            file_bytes      = content,
-            filename        = file.filename or "upload",
-            claim_generator = claim_generator,
-            action          = action,
-            software_agent  = software_agent,
-            digital_source  = digital_source,
-            no_ai_training  = no_ai_training,
-            timestamp_url   = None, # Bypasses the TSA entirely for local testing
-        )
+        return await _run_analysis(file, content, explain)
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Signing failed")
-        raise HTTPException(500, f"Signing failed: {str(e)}")
+        logger.error(f"Analysis pipeline error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    stem    = Path(file.filename or "signed").stem
-    outname = f"{stem}_signed{ext}"
 
-    return Response(
-        content      = signed_bytes,
-        media_type   = "application/octet-stream",
-        headers      = {"Content-Disposition": f'attachment; filename="{outname}"'},
-    )
+@app.post("/api/v1/analyze/batch", dependencies=[Depends(verify_api_key)])
+async def analyze_batch(files: list[UploadFile] = File(...), explain: bool = Query(default=False)):
+    """
+    Analyze multiple files in one request. Each file is processed
+    independently; a failure on one file does not abort the others —
+    its entry in the response will contain an "error" field instead
+    of the usual result fields.
+
+    Explainability defaults to OFF for batch requests since GradCAM/attention
+    maps are expensive and a batch is typically a screening pass, not a
+    deep-dive on a single file.
+    """
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Batch size limited to 50 files per request.")
+
+    logger.info(f"Batch analyzing {len(files)} assets")
+    results = []
+    for f in files:
+        content = await f.read()
+        try:
+            res = await _run_analysis(f, content, explain)
+            results.append(res)
+        except HTTPException as e:
+            results.append({"filename": f.filename, "error": e.detail})
+        except Exception as e:
+            logger.error(f"Batch item error ({f.filename}): {e}")
+            results.append({"filename": f.filename, "error": str(e)})
+
+    summary = {
+        "total": len(results),
+        "fake": sum(1 for r in results if r.get("verdict") == "FAKE"),
+        "real": sum(1 for r in results if r.get("verdict") == "REAL"),
+        "errors": sum(1 for r in results if "error" in r),
+    }
+    return {"summary": summary, "results": results}
 
 
 @app.get("/api/v1/history", dependencies=[Depends(verify_api_key)])
 async def history(limit: int = Query(default=50, le=200)):
-    return {"entries": get_recent(limit)}
+    """Return recent audit log entries (chain-of-custody view)."""
+    return {"entries": audit.get_recent(limit)}
 
 
 @app.get("/api/v1/history/{file_hash}", dependencies=[Depends(verify_api_key)])
 async def history_by_hash(file_hash: str):
-    entries = get_by_hash(file_hash)
+    """Return all past analyses for a given SHA-256 file hash."""
+    entries = audit.get_by_hash(file_hash)
     if not entries:
-        raise HTTPException(404, "No records for this file hash.")
+        raise HTTPException(status_code=404, detail="No records for this file hash.")
     return {"entries": entries}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": MODEL_VERSION}
 
 
 # ---------------------------------------------------------------------------
