@@ -50,13 +50,13 @@ export function renderWorkspace() {
           <button class="banner-close" onclick="this.parentElement.classList.remove('visible')">×</button>
         </div>
 
-        <!-- 1. Executive Panel Scaled -->
+        <!-- 1. Executive Panel -->
         <div class="executive-panel" id="executive-panel">
           <div class="exec-left">
             <div class="trust-ring-box">
-              <svg class="gauge-svg" viewBox="0 0 160 160">
-                <circle cx="80" cy="80" r="70" class="gauge-bg"></circle>
-                <circle cx="80" cy="80" r="70" id="gauge-fill" class="gauge-fill"></circle>
+              <svg class="gauge-svg" viewBox="0 0 110 110">
+                <circle cx="55" cy="55" r="47" class="gauge-bg"></circle>
+                <circle cx="55" cy="55" r="47" id="gauge-fill" class="gauge-fill"></circle>
               </svg>
               <div class="gauge-text">
                 <div class="score-icon" id="status-icon"></div>
