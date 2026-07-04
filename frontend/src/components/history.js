@@ -36,7 +36,7 @@ export function renderHistoryItem(entry) {
   `;
 }
 
-export function updateHistory(sessionHistory) {
+export function updateHistory(filteredHistory, fullHistory = []) {
   const list   = document.getElementById('history-list');
   const total  = document.getElementById('stat-total');
   const valid  = document.getElementById('stat-valid');
@@ -44,11 +44,15 @@ export function updateHistory(sessionHistory) {
 
   if (!list) return;
 
-  list.innerHTML = sessionHistory.length
-    ? sessionHistory.map(renderHistoryItem).join('')
-    : '<p style="font-size:10px;color:var(--text-dim);text-align:center;padding:12px 0;font-family:var(--mono)">NO LOGS AVAILABLE</p>';
+  if (filteredHistory.length === 0) {
+      list.innerHTML = `<p style="text-align:center;font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:20px;">NO LOGS MATCH QUERY</p>`;
+  } else {
+      list.innerHTML = filteredHistory.map(renderHistoryItem).join('');
+  }
 
-  total.textContent  = sessionHistory.length;
-  valid.textContent  = sessionHistory.filter(e => e.status === 'VALID').length;
-  absent.textContent = sessionHistory.filter(e => e.status === 'NO_MANIFEST').length;
+  const statSource = fullHistory.length > 0 ? fullHistory : filteredHistory;
+
+  if (total)  total.textContent  = statSource.length;
+  if (valid)  valid.textContent  = statSource.filter(e => e.status === 'VALID').length;
+  if (absent) absent.textContent = statSource.filter(e => e.status === 'NO_MANIFEST').length;
 }
