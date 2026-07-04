@@ -20,6 +20,10 @@ let signedBlob     = null;
 let signedFilename = null;
 let loadingInterval= null;
 
+// PHASE 3: Filter State
+let activeFilter = 'ALL';
+let searchQuery = '';
+
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
@@ -27,6 +31,37 @@ const actionBtn  = document.getElementById('action-btn');
 const modeVerify = document.getElementById('mode-verify');
 const modeSigning= document.getElementById('mode-sign');
 const signOpts   = document.getElementById('sign-options');
+
+// ── Filter Engine ────────────────────────────────────────────────────────────
+function applyHistoryFilters() {
+  let filtered = sessionHistory;
+  
+  if (activeFilter !== 'ALL') {
+      filtered = filtered.filter(item => item.status === activeFilter);
+  }
+  
+  if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(item => item.filename && item.filename.toLowerCase().includes(q));
+  }
+  
+  updateHistory(filtered, sessionHistory);
+}
+
+// ── Search & Filter Listeners ────────────────────────────────────────────────
+document.getElementById('history-search').addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    applyHistoryFilters();
+});
+
+document.querySelectorAll('.filter-chip').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        activeFilter = e.target.dataset.filter;
+        applyHistoryFilters();
+    });
+});
 
 // ── File selection ───────────────────────────────────────────────────────────
 dropZone.addEventListener('click', () => fileInput.click());
@@ -115,7 +150,7 @@ async function runVerify() {
     _time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
   };
   sessionHistory.unshift(entry);
-  updateHistory(sessionHistory);
+  applyHistoryFilters();
 }
 
 // ── Sign flow ─────────────────────────────────────────────────────────────────
@@ -143,7 +178,7 @@ async function runSign() {
     _idx:       sessionHistory.length,
     _time:      new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
   });
-  updateHistory(sessionHistory);
+  applyHistoryFilters();
 }
 
 document.getElementById('dl-btn').addEventListener('click', () => {
@@ -178,7 +213,6 @@ function renderVerdict(d) {
     REMOTE_MANIFEST: { sub: "Credentials hosted remotely.", conf: "High", int: "Intact", chain: "Cloud-Verified" }
   };
 
-  // Arc calculation (2*pi*70 ~= 439.8) for new scale
   let fillPercent = 0;
   if (d.status === 'VALID' || d.status === 'REMOTE_MANIFEST') fillPercent = 100;
   else if (d.status === 'PARTIAL') fillPercent = 50;
@@ -206,7 +240,7 @@ function renderVerdict(d) {
 
   fillEl.className.baseVal = `gauge-fill ${d.status}`;
   setTimeout(() => {
-    fillEl.style.strokeDashoffset = 439.8 - (439.8 * (fillPercent / 100));
+    fillEl.style.strokeDashoffset = 295.3 - (295.3 * (fillPercent / 100));
   }, 100);
 
   const mCount = d.manifests?.length || 0;
@@ -426,7 +460,7 @@ function renderRawJson(json) {
 
 // JSON Actions
 document.getElementById('json-toggle').addEventListener('click', (e) => {
-  if(e.target.closest('.json-actions')) return; // Ignore if clicking action buttons
+  if(e.target.closest('.json-actions')) return; 
   
   const bar = e.currentTarget;
   const isExpanded = bar.classList.toggle('open');
@@ -475,7 +509,7 @@ document.getElementById('history-list').addEventListener('click', e => {
 
 document.getElementById('clear-hist-btn').addEventListener('click', () => {
   sessionHistory = [];
-  updateHistory(sessionHistory);
+  applyHistoryFilters();
   resetResults();
   document.getElementById('idle-state').style.display = 'flex';
   document.getElementById('result-state').classList.remove('visible');
@@ -511,7 +545,7 @@ function resetResults() {
   document.getElementById('json-expand-text').textContent = 'Expand ▼';
   document.getElementById('result-state').classList.remove('visible');
   
-  document.getElementById('gauge-fill').style.strokeDashoffset = 439.8;
+  document.getElementById('gauge-fill').style.strokeDashoffset = 295.3;
   document.getElementById('status-icon').innerHTML = "";
   signedBlob = null;
   window.__currentRawJson = null;
@@ -543,4 +577,4 @@ function showBanner(id, msg) {
   el.classList.add('visible');
 }
 
-updateHistory(sessionHistory);
+applyHistoryFilters();
