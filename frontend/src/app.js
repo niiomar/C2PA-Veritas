@@ -4,7 +4,7 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// Mount layout
+// ── Mount layout ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -12,14 +12,15 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// State
+// ── State ────────────────────────────────────────────────────────────────────
 let currentFile    = null;
 let currentMode    = 'verify';  
 let sessionHistory = [];
 let signedBlob     = null;
 let signedFilename = null;
+let loadingInterval= null;
 
-// DOM refs
+// ── DOM refs ─────────────────────────────────────────────────────────────────
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -27,7 +28,7 @@ const modeVerify = document.getElementById('mode-verify');
 const modeSigning= document.getElementById('mode-sign');
 const signOpts   = document.getElementById('sign-options');
 
-// File selection
+// ── File selection ───────────────────────────────────────────────────────────
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -43,11 +44,11 @@ function handleFile(file) {
   currentFile = file;
   const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
   actionBtn.disabled   = false;
-  actionBtn.textContent= `${label}: ${file.name.length > 25 ? file.name.slice(0,22)+'…' : file.name}`;
+  actionBtn.textContent= `${label}: ${file.name.length > 20 ? file.name.slice(0,18)+'…' : file.name}`;
   resetResults();
 }
 
-// Mode switching
+// ── Mode switching ───────────────────────────────────────────────────────────
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -62,7 +63,7 @@ function handleFile(file) {
   });
 });
 
-// Action
+// ── Action ───────────────────────────────────────────────────────────────────
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -75,11 +76,14 @@ actionBtn.addEventListener('click', async () => {
       await runSign();
     }
   } catch (err) {
-    showBanner('warn-sys-error', `PIPELINE ERROR: ${err.message}`);
-    document.querySelector('.trust-card').style.display = 'none';
+    document.getElementById('warn-sys-text').textContent = `PIPELINE ERROR: ${err.message}`;
+    document.getElementById('warn-sys-error').classList.add('visible');
+    
+    document.getElementById('executive-panel').style.display = 'none';
     document.querySelector('.kpi-strip').style.display = 'none';
     document.querySelector('.metrics-row').style.display = 'none';
-    document.querySelector('.json-panel').style.display = 'none';
+    document.getElementById('json-panel-container').classList.remove('visible');
+    
     document.getElementById('idle-state').style.display = 'none';
     document.getElementById('result-state').classList.add('visible');
   } finally {
@@ -87,11 +91,12 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// Verify flow
+// ── Verify flow ───────────────────────────────────────────────────────────────
 async function runVerify() {
   const data = await verifyFile(currentFile);
   if (data._rateLimited) {
-    showBanner('warn-sys-error', 'Rate limit reached — please wait before retrying.');
+    document.getElementById('warn-sys-text').textContent = 'Rate limit reached — please wait before retrying.';
+    document.getElementById('warn-sys-error').classList.add('visible');
     showResults();
     return;
   }
@@ -107,13 +112,13 @@ async function runVerify() {
   const entry = {
     ...data,
     _idx:  sessionHistory.length,
-    _time: new Date().toLocaleTimeString(),
+    _time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
   };
   sessionHistory.unshift(entry);
   updateHistory(sessionHistory);
 }
 
-// Sign flow
+// ── Sign flow ─────────────────────────────────────────────────────────────────
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -136,7 +141,7 @@ async function runSign() {
     media_type: currentFile.type || 'N/A',
     manifests:  [{ assertions: [] }], 
     _idx:       sessionHistory.length,
-    _time:      new Date().toLocaleTimeString(),
+    _time:      new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
   });
   updateHistory(sessionHistory);
 }
@@ -149,7 +154,7 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
 
-// Render helpers
+// ── Render helpers ────────────────────────────────────────────────────────────
 
 function renderVerdict(d) {
   const titleEl = document.getElementById('trust-title');
@@ -173,6 +178,7 @@ function renderVerdict(d) {
     REMOTE_MANIFEST: { sub: "Credentials hosted remotely.", conf: "High", int: "Intact", chain: "Cloud-Verified" }
   };
 
+  // Arc calculation (2*pi*70 ~= 439.8) for new scale
   let fillPercent = 0;
   if (d.status === 'VALID' || d.status === 'REMOTE_MANIFEST') fillPercent = 100;
   else if (d.status === 'PARTIAL') fillPercent = 50;
@@ -200,7 +206,7 @@ function renderVerdict(d) {
 
   fillEl.className.baseVal = `gauge-fill ${d.status}`;
   setTimeout(() => {
-    fillEl.style.strokeDashoffset = 377 - (377 * (fillPercent / 100));
+    fillEl.style.strokeDashoffset = 439.8 - (439.8 * (fillPercent / 100));
   }, 100);
 
   const mCount = d.manifests?.length || 0;
@@ -214,8 +220,15 @@ function renderVerdict(d) {
   document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
   document.getElementById('sum-signal').textContent   = d.signal || 'None';
-  document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded in asset' : 'Not embedded';
-  document.getElementById('sum-sha').textContent      = d.file_sha256 ? d.file_sha256.slice(0, 20) + '…' : 'None';
+  document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded' : 'Detached';
+  
+  const fullSha = d.file_sha256 || '';
+  if (fullSha) {
+    const shortSha = fullSha.slice(0, 16);
+    document.getElementById('sum-sha').innerHTML = `${shortSha} <button class="copy-btn" onclick="navigator.clipboard.writeText('${fullSha}')" title="Copy Full SHA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>`;
+  } else {
+    document.getElementById('sum-sha').textContent = 'None';
+  }
 
   document.getElementById('warn-no-manifest').classList.toggle('visible', d.status === 'NO_MANIFEST');
   document.getElementById('warn-invalid').classList.toggle('visible',     d.status === 'INVALID');
@@ -238,7 +251,7 @@ function renderCertPanel(d) {
   const card  = document.getElementById('cert-card');
   const isDev = m.issuer?.includes('Veritas') || m.issuer?.includes('Dev') || m.issuer?.includes('self');
 
-  if (isDev) document.getElementById('warn-dev-cert').style.display = 'flex';
+  if (isDev) document.getElementById('warn-dev-cert').classList.add('visible');
 
   let fp = d.file_sha256 ? d.file_sha256.slice(0,16).toUpperCase() : 'N/A';
 
@@ -260,33 +273,50 @@ function renderTimeline(d) {
 
   const panel = document.getElementById('timeline-panel');
   const graph = document.getElementById('pg-container');
+  const drawer= document.getElementById('pg-drawer');
+  drawer.classList.remove('visible');
 
-  let nodesHTML = '';
-  
-  nodesHTML += `
-    <div class="pg-node origin">
+  window.__timelineMeta = {
+      origin: { title: "Asset Origin", software: tl[0]?.software_agent || "Unknown", time: tl[0]?.timestamp || "Unknown", details: "Initial asset generation or capture." }
+  };
+
+  let nodesHTML = `
+    <div class="pg-node origin" data-step="origin">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></div>
       <span class="pg-label">Origin</span>
       <span class="pg-sub">Capture/Creation</span>
     </div>
   `;
 
-  tl.forEach(action => {
+  tl.forEach((action, i) => {
     let type = action.action.includes('created') ? 'origin' : 'edit';
     if(type === 'edit') {
+      const stepId = `edit_${i}`;
+      window.__timelineMeta[stepId] = {
+          title: action.action.split('.').pop().toUpperCase(),
+          software: action.software_agent || "Unknown Editor",
+          time: action.timestamp || "Unknown Time",
+          details: `Action: ${action.action}`
+      };
       nodesHTML += `
-        <div class="pg-node edit">
+        <div class="pg-node edit" data-step="${stepId}">
           <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></div>
           <span class="pg-label">${action.action.split('.').pop().toUpperCase()}</span>
-          <span class="pg-sub" title="${action.software_agent}">${action.software_agent ? action.software_agent.split(' ')[0] : 'Editor'}</span>
+          <span class="pg-sub">${action.software_agent ? action.software_agent.split(' ')[0] : 'Editor'}</span>
         </div>
       `;
     }
   });
 
   if (d.status !== 'NO_MANIFEST') {
+    window.__timelineMeta['sign'] = {
+        title: "Cryptographic Signature",
+        software: d.active_manifest?.issuer || "Unknown Issuer",
+        time: "At Signature Time",
+        details: `Algorithm: ${d.active_manifest?.signing_algorithm || 'Unknown'}`
+    };
     nodesHTML += `
-      <div class="pg-node sign">
+      <div class="pg-node sign" data-step="sign">
         <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
         <span class="pg-label">Signed</span>
         <span class="pg-sub">${d.active_manifest?.issuer ? d.active_manifest.issuer.split(' ')[0] : 'Credentials'}</span>
@@ -294,8 +324,14 @@ function renderTimeline(d) {
     `;
   }
 
+  window.__timelineMeta['verify'] = {
+      title: "Verification",
+      software: "C2PA Veritas Engine",
+      time: new Date().toISOString(),
+      details: `Status: ${d.status}`
+  };
   nodesHTML += `
-    <div class="pg-node verify">
+    <div class="pg-node verify" data-step="verify">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
       <span class="pg-label">Verified</span>
       <span class="pg-sub">C2PA Veritas</span>
@@ -304,6 +340,26 @@ function renderTimeline(d) {
 
   graph.innerHTML = nodesHTML;
   panel.classList.add('visible');
+
+  // Bind interactive timeline drawers
+  document.querySelectorAll('.pg-node').forEach(node => {
+     node.addEventListener('click', () => {
+         document.querySelectorAll('.pg-node').forEach(n => n.classList.remove('active'));
+         node.classList.add('active');
+         const meta = window.__timelineMeta[node.dataset.step];
+         if(meta) {
+             document.getElementById('drawer-title').textContent = meta.title;
+             document.getElementById('drawer-software').textContent = meta.software;
+             
+             let timeStr = meta.time;
+             if(Date.parse(timeStr)) timeStr = new Date(timeStr).toLocaleString();
+             document.getElementById('drawer-time').textContent = timeStr;
+             
+             document.getElementById('drawer-details').textContent = meta.details;
+             drawer.classList.add('visible');
+         }
+     });
+  });
 }
 
 function renderAiPolicy(d) {
@@ -326,9 +382,9 @@ function renderAiPolicy(d) {
     const useClass = use === 'notAllowed' ? 'notAllowed' : use === 'allowed' ? 'allowed' : 'constrained';
     const useLabel = use === 'notAllowed' ? 'RESTRICTED' : use.toUpperCase();
     return `
-      <div class="data-item">
+      <div class="data-item val-${useClass}">
         <span class="data-label">${LABEL_MAP[key] || key.split('.').pop()}</span>
-        <span class="data-val val-${useClass}">${useLabel}</span>
+        <span class="data-val">${useLabel}</span>
       </div>
     `;
   }).join('');
@@ -336,27 +392,71 @@ function renderAiPolicy(d) {
   panel.classList.add('visible');
 }
 
+// VS Code Style Render
 function renderRawJson(json) {
-  if (!json) return;
-  let str = JSON.stringify(json, null, 2);
-  str = str.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
-      let cls = 'number';
+  if (!json) {
+    document.getElementById('manifest-size').textContent = '0 KB';
+    document.getElementById('json-content').innerHTML = '';
+    window.__currentRawJson = null;
+    return;
+  }
+  
+  const strJson = JSON.stringify(json, null, 2);
+  const sizeKB = (new Blob([strJson]).size / 1024).toFixed(1);
+  document.getElementById('manifest-size').textContent = `${sizeKB} KB`;
+  window.__currentRawJson = strJson;
+
+  const lines = strJson.split('\n');
+  let html = '';
+  lines.forEach((line, index) => {
+    let highlighted = line.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+      let cls = 'json-number';
       if (/^"/.test(match)) {
-          if (/:$/.test(match)) { cls = 'key'; } 
-          else { cls = 'string'; }
-      } else if (/true|false/.test(match)) { cls = 'boolean'; } 
-      else if (/null/.test(match)) { cls = 'null'; }
-      return '<span class="json-' + cls + '">' + match + '</span>';
+          if (/:$/.test(match)) { cls = 'json-key'; }
+          else { cls = 'json-string'; }
+      } else if (/true|false/.test(match)) { cls = 'json-boolean'; }
+      else if (/null/.test(match)) { cls = 'json-null'; }
+      return '<span class="' + cls + '">' + match + '</span>';
+    });
+    html += `<div class="json-line"><span class="json-line-num">${index + 1}</span><span class="json-line-code">${highlighted}</span></div>`;
   });
-  document.getElementById('json-content').innerHTML = str;
+  
+  document.getElementById('json-content').innerHTML = html;
 }
 
+// JSON Actions
 document.getElementById('json-toggle').addEventListener('click', (e) => {
-  e.currentTarget.classList.toggle('open');
-  document.getElementById('json-viewer').classList.toggle('visible');
+  if(e.target.closest('.json-actions')) return; // Ignore if clicking action buttons
+  
+  const bar = e.currentTarget;
+  const isExpanded = bar.classList.toggle('open');
+  document.getElementById('json-viewer').classList.toggle('open');
+  document.getElementById('json-expand-text').textContent = isExpanded ? 'Collapse ▲' : 'Expand ▼';
 });
 
-// History click → re-render
+document.getElementById('json-copy-btn').addEventListener('click', (e) => {
+  if(window.__currentRawJson) {
+      navigator.clipboard.writeText(window.__currentRawJson);
+      const btn = e.currentTarget;
+      const orig = btn.innerHTML;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg> COPIED`;
+      setTimeout(() => btn.innerHTML = orig, 2000);
+  }
+});
+
+document.getElementById('json-dl-btn').addEventListener('click', (e) => {
+  if(window.__currentRawJson) {
+      const blob = new Blob([window.__currentRawJson], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `manifest_${currentFile?.name || 'export'}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+  }
+});
+
+// ── History click → re-render ─────────────────────────────────────────────────
 document.getElementById('history-list').addEventListener('click', e => {
   const item = e.target.closest('.hist-item');
   if (!item) return;
@@ -384,48 +484,62 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
   actionBtn.textContent = 'AWAITING EVIDENCE';
 });
 
-// Utilities
+// ── Utilities ─────────────────────────────────────────────────────────────────
 function showResults() {
-  document.querySelector('.trust-card').style.display = 'flex';
+  document.getElementById('executive-panel').style.display = 'flex';
   document.querySelector('.kpi-strip').style.display = 'flex';
   document.querySelector('.metrics-row').style.display = 'grid';
-  document.querySelector('.json-panel').style.display = 'block';
+  document.getElementById('json-panel-container').classList.add('visible');
   
   document.getElementById('idle-state').style.display = 'none';
   document.getElementById('result-state').classList.add('visible');
 }
 
 function resetResults() {
-  ['warn-no-manifest','warn-invalid','warn-partial','warn-remote', 'warn-sys-error'].forEach(id => {
+  ['warn-no-manifest','warn-invalid','warn-partial','warn-remote', 'warn-sys-error', 'warn-dev-cert'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('visible');
   });
   
-  document.getElementById('warn-dev-cert').style.display = 'none';
-  document.getElementById('cert-panel').classList.remove('visible');
-  document.getElementById('timeline-panel').classList.remove('visible');
-  document.getElementById('ai-policy-panel').classList.remove('visible');
-  document.getElementById('download-bar').classList.remove('visible');
+  ['cert-panel', 'timeline-panel', 'ai-policy-panel', 'download-bar'].forEach(id => {
+    document.getElementById(id).classList.remove('visible');
+  });
   
+  document.getElementById('pg-drawer').classList.remove('visible');
   document.getElementById('json-toggle').classList.remove('open');
-  document.getElementById('json-viewer').classList.remove('visible');
+  document.getElementById('json-viewer').classList.remove('open');
+  document.getElementById('json-expand-text').textContent = 'Expand ▼';
   document.getElementById('result-state').classList.remove('visible');
   
-  document.getElementById('gauge-fill').style.strokeDashoffset = 377;
+  document.getElementById('gauge-fill').style.strokeDashoffset = 439.8;
   document.getElementById('status-icon').innerHTML = "";
   signedBlob = null;
+  window.__currentRawJson = null;
 }
 
 function setLoading(on) {
   actionBtn.disabled = on;
-  actionBtn.textContent = on ? 'ANALYZING TELEMETRY...' : (
-    currentMode === 'verify' ? `RUN VERIFICATION` : `APPLY SIGNATURE`
-  );
+  if (!on) {
+    clearInterval(loadingInterval);
+    const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
+    actionBtn.textContent = `${label}: ${currentFile.name.length > 20 ? currentFile.name.slice(0,18)+'…' : currentFile.name}`;
+    return;
+  }
+  
+  const steps = ['Reading Manifest...', 'Checking Signature...', 'Validating Certificate...', 'Parsing Assertions...'];
+  let i = 0;
+  actionBtn.textContent = steps[0];
+  loadingInterval = setInterval(() => {
+    i = (i + 1) % steps.length;
+    actionBtn.textContent = steps[i];
+  }, 400);
 }
 
 function showBanner(id, msg) {
   const el = document.getElementById(id);
-  if (msg) el.textContent = `❌ ${msg}`;
+  if (id === 'warn-sys-error') {
+     document.getElementById('warn-sys-text').textContent = msg;
+  }
   el.classList.add('visible');
 }
 
