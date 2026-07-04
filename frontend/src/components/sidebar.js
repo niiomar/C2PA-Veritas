@@ -11,7 +11,7 @@ export function renderSidebar() {
 
       <div class="section-heading">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-        Telemetry Overview
+        Telemetry
       </div>
       <div class="session-stats">
         <div class="stat-box"><span>Scans</span><strong id="stat-total">0</strong></div>
@@ -24,13 +24,12 @@ export function renderSidebar() {
         Evidence Input
       </div>
       <div class="evidence-locker" id="drop-zone">
-        <svg class="locker-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke-width="1.5">
+        <svg class="locker-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke-width="1.5">
           <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <line x1="12" y1="8" x2="12" y2="16"></line>
-          <line x1="8" y1="12" x2="16" y2="12"></line>
+          <line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line>
         </svg>
         <h2>Drop Digital Evidence</h2>
-        <p>or click to browse secure local files</p>
+        <p>or browse local files</p>
         <div class="locker-badges">
           <span class="l-badge">JPEG</span>
           <span class="l-badge">PNG</span>
@@ -60,14 +59,11 @@ export function renderSidebar() {
         </div>
         <div class="field-group">
           <label>Software Agent</label>
-          <input type="text" id="sign-agent" placeholder="e.g. Veritas Console v2.0">
+          <input type="text" id="sign-agent" placeholder="e.g. Veritas Console">
         </div>
         <div class="toggle-row">
-          <label class="toggle">
-            <input type="checkbox" id="sign-no-ai" checked>
-            <span class="toggle-slider"></span>
-          </label>
-          <span>Embed "Do Not Train" assertion</span>
+          <label class="toggle"><input type="checkbox" id="sign-no-ai" checked><span class="toggle-slider"></span></label>
+          <span>Embed "Do Not Train"</span>
         </div>
       </div>
 
