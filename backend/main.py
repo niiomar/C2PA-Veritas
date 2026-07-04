@@ -32,7 +32,11 @@ CORS_ORIGINS = [o.strip() for o in os.getenv(
 
 API_KEY = os.getenv("API_KEY", "").strip()
 
+
+# ---------------------------------------------------------------------------
 # Auth
+# ---------------------------------------------------------------------------
+
 async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-KEY")):
     if not API_KEY:
         return
@@ -40,7 +44,10 @@ async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-A
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key.")
 
 
+# ---------------------------------------------------------------------------
 # App
+# ---------------------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("C2PA-Veritas starting.")
@@ -58,14 +65,20 @@ app.add_middleware(
 )
 
 
+# ---------------------------------------------------------------------------
 # Serialisation helper (dataclasses → JSON-safe dict)
+# ---------------------------------------------------------------------------
+
 def _report_to_dict(report: ProvenanceReport) -> dict:
     d = dataclasses.asdict(report)
     d["status"] = report.status.value
     return d
 
 
+# ---------------------------------------------------------------------------
 # Routes
+# ---------------------------------------------------------------------------
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": VERSION}
@@ -175,7 +188,9 @@ async def history_by_hash(file_hash: str):
     return {"entries": entries}
 
 
+# ---------------------------------------------------------------------------
 # Static File Serving
+# ---------------------------------------------------------------------------
 
 # Point FastAPI to the folder where Vite is actually putting the files
 _static = Path(__file__).parent / "static"
