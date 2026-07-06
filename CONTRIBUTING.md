@@ -17,4 +17,4 @@ fixing or adding and reference the relevant spec section if applicable.
 
 ## Security
 
-Do not open public issues for security vulnerabilities. See [SECURITY.md](SECURITY.md).
+Do not open public issues for security vulnerabilities. See [SECURITY.md](SECURITY.md)
