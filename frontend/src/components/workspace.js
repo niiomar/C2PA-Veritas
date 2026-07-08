@@ -2,7 +2,6 @@ export function renderWorkspace() {
   return `
     <main class="main-view" id="main-view">
 
-      <!-- IDLE -->
       <div id="idle-state">
         <div class="idle-shield">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
@@ -10,11 +9,10 @@ export function renderWorkspace() {
         <p>AWAITING PROVENANCE TELEMETRY</p>
       </div>
 
-      <!-- RESULT -->
       <div id="result-state">
 
         <!-- Warning banners -->
-        <div id="warn-sys-error" class="warning-banner warn-red">
+        <div class="warning-banner warn-red" id="warn-sys-error">
           <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
           <span id="warn-sys-text"></span>
           <button class="banner-close" onclick="this.parentElement.classList.remove('visible')">×</button>
@@ -50,7 +48,16 @@ export function renderWorkspace() {
           <button class="banner-close" onclick="this.parentElement.classList.remove('visible')">×</button>
         </div>
 
-        <!-- 1. Executive Panel -->
+        <!-- NEW: Source Evidence Viewer -->
+        <div class="media-panel" id="preview-wrapper">
+          <div class="media-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> Source Evidence</div>
+          <div class="media-content">
+            <img id="preview-img" style="display:none;" />
+            <video id="video-preview" controls style="display:none;"></video>
+          </div>
+        </div>
+
+        <!-- Executive Panel (Fluff metrics deleted) -->
         <div class="executive-panel" id="executive-panel">
           <div class="exec-left">
             <div class="trust-ring-box">
@@ -65,11 +72,6 @@ export function renderWorkspace() {
             <div class="trust-info">
               <h2 class="trust-title" id="trust-title">UNKNOWN</h2>
               <p class="trust-sub" id="trust-sub">Awaiting telemetry analysis.</p>
-              <div class="trust-metrics">
-                <div class="tm-item"><span class="tm-label">Confidence</span><strong class="tm-val" id="tm-conf">—</strong></div>
-                <div class="tm-item"><span class="tm-label">Integrity</span><strong class="tm-val" id="tm-int">—</strong></div>
-                <div class="tm-item"><span class="tm-label">Trust Chain</span><strong class="tm-val" id="tm-chain">—</strong></div>
-              </div>
             </div>
           </div>
           <div class="exec-divider"></div>
@@ -83,7 +85,6 @@ export function renderWorkspace() {
           </div>
         </div>
 
-        <!-- 2. Full-Width KPI Strip -->
         <div class="kpi-strip">
           <div class="kpi-item"><span class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> Manifests</span><span class="kpi-val" id="kpi-manifests">0</span></div>
           <div class="kpi-item"><span class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg> Assertions</span><span class="kpi-val" id="kpi-assertions">0</span></div>
@@ -91,70 +92,50 @@ export function renderWorkspace() {
           <div class="kpi-item"><span class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Process Time</span><span class="kpi-val" id="kpi-time">0s</span></div>
         </div>
 
-        <!-- Download Banner -->
         <div id="download-bar">
           <p><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"></polyline></svg> CRYPTOGRAPHIC SIGNATURE APPLIED</p>
           <button class="dl-btn" id="dl-btn">EXPORT SECURED FILE</button>
         </div>
 
-        <!-- 3. Format Metrics Row -->
         <div class="metrics-row">
           <div class="metric-card"><div class="mc-label">File Format</div><div class="mc-val" id="mc-type">N/A</div><span class="mc-sub">MIME Verified</span></div>
-          <div class="metric-card"><div class="mc-label">Edits</div><div class="mc-val" id="mc-actions">0</div><span class="mc-sub">Historical Actions</span></div>
+          
+          <!-- EDITS CARD REBUILT: Now acts as a scrolling list of actions instead of just a number -->
+          <div class="metric-card"><div class="mc-label">Historical Actions</div><div class="mc-val" id="mc-actions" style="margin-bottom:0; font-weight:normal;">0</div></div>
+          
           <div class="metric-card" style="grid-column: span 2"><div class="mc-label">Signature Alg</div><div class="mc-val" id="mc-alg">N/A</div><span class="mc-sub">Cryptographic Method</span></div>
         </div>
 
-        <!-- 4. Cryptographic Identity -->
         <div id="cert-panel" class="panel">
           <div class="panel-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> Cryptographic Identity</div>
-          <div class="cert-container" id="cert-card">
-            <!-- Injected via JS -->
-          </div>
+          <div class="cert-container" id="cert-card"></div>
         </div>
 
-        <!-- 5. Interactive Provenance Graph -->
         <div id="timeline-panel" class="panel">
           <div class="panel-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg> Provenance Graph</div>
-          <div class="provenance-graph" id="pg-container">
-            <!-- Injected via JS -->
-          </div>
+          <div class="provenance-graph" id="pg-container"></div>
           
           <div id="pg-drawer" class="pg-drawer">
             <div class="pg-drawer-grid">
-              <div class="pg-drawer-col">
-                <span class="pg-drawer-label">Node Action</span>
-                <span class="pg-drawer-val" id="drawer-title">--</span>
-              </div>
-              <div class="pg-drawer-col">
-                <span class="pg-drawer-label">Software Agent</span>
-                <span class="pg-drawer-val" id="drawer-software">--</span>
-              </div>
-              <div class="pg-drawer-col">
-                <span class="pg-drawer-label">Timestamp (UTC)</span>
-                <span class="pg-drawer-val" id="drawer-time">--</span>
-              </div>
-              <div class="pg-drawer-col">
-                <span class="pg-drawer-label">Cryptographic Details</span>
-                <span class="pg-drawer-val" id="drawer-details">--</span>
-              </div>
+              <div class="pg-drawer-col"><span class="pg-drawer-label">Node Action</span><span class="pg-drawer-val" id="drawer-title">--</span></div>
+              <div class="pg-drawer-col"><span class="pg-drawer-label">Software Agent</span><span class="pg-drawer-val" id="drawer-software">--</span></div>
+              <div class="pg-drawer-col"><span class="pg-drawer-label">Timestamp (UTC)</span><span class="pg-drawer-val" id="drawer-time">--</span></div>
+              <div class="pg-drawer-col"><span class="pg-drawer-label">Cryptographic Details</span><span class="pg-drawer-val" id="drawer-details">--</span></div>
             </div>
           </div>
         </div>
 
-        <!-- 6. AI Policy Explorer -->
         <div id="ai-policy-panel" class="panel">
           <div class="panel-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg> Machine Learning / Mining Policy</div>
           <div class="data-grid" id="policy-grid"></div>
         </div>
 
-        <!-- 7. VS Code Style Raw JSON Inspector -->
         <div class="json-panel" id="json-panel-container">
           <div class="json-header-bar" id="json-toggle">
             <div style="display:flex; align-items:center; gap:16px;">
                 <span class="json-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg> RAW MANIFEST JSON</span>
                 <span class="json-meta">Size: <strong id="manifest-size" style="color:var(--text-hi);">0 KB</strong></span>
             </div>
-            
             <div class="json-actions">
               <button class="json-action-btn" id="json-copy-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> COPY PAYLOAD</button>
               <button class="json-action-btn" id="json-dl-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> DOWNLOAD</button>
@@ -162,9 +143,7 @@ export function renderWorkspace() {
               <span class="json-expand" id="json-expand-text">Expand ▼</span>
             </div>
           </div>
-          <div class="json-viewer" id="json-viewer">
-            <div id="json-content"></div>
-          </div>
+          <div class="json-viewer" id="json-viewer"><div id="json-content"></div></div>
         </div>
 
       </div>
