@@ -4,7 +4,7 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// ── Mount Layout ────────────────────────────────────────────────────────────
+// Mount Layout
 // Injects the sidebar and workspace components into the main #app container
 document.getElementById('app').innerHTML = `
   <div class="layout">
@@ -13,7 +13,7 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// ── Application State ────────────────────────────────────────────────────────
+// Application State
 let currentFile    = null;      // Holds the currently uploaded File object
 let currentMode    = 'verify';  // Tracks active mode: 'verify' or 'sign'
 let sessionHistory = [];        // Stores all scans run during this session
@@ -28,7 +28,7 @@ let searchQuery = '';           // Tracks current text in the history search bar
 // Cache for the source media viewer to prevent memory leaks
 let objectUrlCache = null;
 
-// ── DOM Element References ───────────────────────────────────────────────────
+// DOM Element References
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -39,7 +39,7 @@ const signOpts   = document.getElementById('sign-options');
 const previewImg   = document.getElementById('preview-img');
 const videoPreview = document.getElementById('video-preview');
 
-// ── Strict Forensic Date Formatter ───────────────────────────────────────────
+// Strict Forensic Date Formatter
 // Forces all timestamps into a standard, readable chronological format
 function formatDateTime(isoString) {
   if (!isoString) return "--";
@@ -50,7 +50,7 @@ function formatDateTime(isoString) {
   });
 }
 
-// ── Filter Engine ────────────────────────────────────────────────────────────
+// Filter Engine
 // Filters the session history array based on the active chip and search query
 function applyHistoryFilters() {
   let filtered = sessionHistory;
@@ -83,7 +83,7 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
     });
 });
 
-// ── File Ingestion Listeners ─────────────────────────────────────────────────
+// File Ingestion Listeners
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 
@@ -125,7 +125,7 @@ function handleFile(file) {
   resetResults();
 }
 
-// ── Operation Mode Switching (Verify vs. Sign) ───────────────────────────────
+// Operation Mode Switching (Verify vs. Sign)
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -144,7 +144,7 @@ function handleFile(file) {
   });
 });
 
-// ── Main Execution Pipeline ──────────────────────────────────────────────────
+// Main Execution Pipeline
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -174,7 +174,7 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// ── 1. Verification Flow ──────────────────────────────────────────────────────
+// 1. Verification Flow
 async function runVerify() {
   const data = await verifyFile(currentFile);
   
@@ -205,7 +205,7 @@ async function runVerify() {
   applyHistoryFilters();
 }
 
-// ── 2. Signing Flow ───────────────────────────────────────────────────────────
+// 2. Signing Flow
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -244,7 +244,7 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000); // Cleanup memory
 });
 
-// ── UI Render Helpers ─────────────────────────────────────────────────────────
+// UI Render Helpers
 
 // Renders the main Trust Ring and Evidence Summary logic
 function renderVerdict(d) {
@@ -300,7 +300,7 @@ function renderVerdict(d) {
   document.getElementById('kpi-certs').textContent      = (d.active_manifest && d.active_manifest.issuer) ? '1' : '0';
   document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
-  // UI CLEANUP: Strip verbose backend error messages at the em-dash to save space
+  // UI CLEANUP
   let signalText = d.signal || 'None';
   if (signalText.includes('—')) signalText = signalText.split('—')[0].trim();
   else if (signalText.includes('-')) signalText = signalText.split('-')[0].trim();
@@ -354,7 +354,7 @@ function renderMetrics(d) {
   }
 }
 
-// ── CUSTOM LOGIC: Sequence Completeness (Omission Detection) ────────────────
+// CUSTOM LOGIC: Sequence Completeness (Omission Detection)
 function renderSequencePanel(d) {
   const panel = document.getElementById('sequence-panel');
   const grid = document.getElementById('sequence-grid');
@@ -564,7 +564,7 @@ function renderAiPolicy(d) {
   panel.classList.add('visible');
 }
 
-// ── Raw Code JSON Viewer Logic ───────────────────────────────────────────────
+// Raw Code JSON Viewer Logic
 function renderRawJson(json) {
   if (!json) {
     document.getElementById('manifest-size').textContent = '0 KB';
@@ -629,7 +629,7 @@ document.getElementById('json-dl-btn').addEventListener('click', (e) => {
   }
 });
 
-// ── Session History State Logic ──────────────────────────────────────────────
+// Session History State Logic
 // Allows an analyst to click an old file scan in the sidebar and reload the UI state
 document.getElementById('history-list').addEventListener('click', e => {
   const item = e.target.closest('.hist-item');
@@ -669,7 +669,7 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
   actionBtn.textContent = 'AWAITING EVIDENCE';
 });
 
-// ── UI Lifecycle Management Utilities ────────────────────────────────────────
+// UI Lifecycle Management Utilities
 
 // Swaps visibility from the idle dashboard to the active results wrapper
 function showResults() {
