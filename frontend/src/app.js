@@ -4,7 +4,6 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// Mount layout
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -12,7 +11,6 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// State
 let currentFile    = null;
 let currentMode    = 'verify';  
 let sessionHistory = [];
@@ -20,13 +18,10 @@ let signedBlob     = null;
 let signedFilename = null;
 let loadingInterval= null;
 
-// Filter State
 let activeFilter = 'ALL';
 let searchQuery = '';
-
 let objectUrlCache = null;
 
-// DOM refs
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -37,37 +32,27 @@ const signOpts   = document.getElementById('sign-options');
 const previewImg   = document.getElementById('preview-img');
 const videoPreview = document.getElementById('video-preview');
 
-// Strict Forensic Date Formatter
 function formatDateTime(isoString) {
   if (!isoString) return "--";
   const d = new Date(isoString);
   if (isNaN(d)) return isoString;
   return d.toLocaleString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric',
-      hour: '2-digit', 
-      minute: '2-digit' 
+      month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' 
   });
 }
 
-// Filter Engine
 function applyHistoryFilters() {
   let filtered = sessionHistory;
-  
   if (activeFilter !== 'ALL') {
       filtered = filtered.filter(item => item.status === activeFilter);
   }
-  
   if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(item => item.filename && item.filename.toLowerCase().includes(q));
   }
-  
   updateHistory(filtered, sessionHistory);
 }
 
-// Search & Filter Listeners
 document.getElementById('history-search').addEventListener('input', (e) => {
     searchQuery = e.target.value;
     applyHistoryFilters();
@@ -82,7 +67,6 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
     });
 });
 
-// File selection
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -118,7 +102,6 @@ function handleFile(file) {
   resetResults();
 }
 
-// Mode switching
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -133,7 +116,6 @@ function handleFile(file) {
   });
 });
 
-// Action
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -148,12 +130,10 @@ actionBtn.addEventListener('click', async () => {
   } catch (err) {
     document.getElementById('warn-sys-text').textContent = `PIPELINE ERROR: ${err.message}`;
     document.getElementById('warn-sys-error').classList.add('visible');
-    
     document.getElementById('executive-panel').style.display = 'none';
     document.querySelector('.kpi-strip').style.display = 'none';
     document.querySelector('.metrics-row').style.display = 'none';
     document.getElementById('json-panel-container').classList.remove('visible');
-    
     document.getElementById('idle-state').style.display = 'none';
     document.getElementById('result-state').classList.add('visible');
   } finally {
@@ -161,7 +141,6 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// Verify flow
 async function runVerify() {
   const data = await verifyFile(currentFile);
   if (data._rateLimited) {
@@ -175,6 +154,7 @@ async function runVerify() {
   renderMetrics(data);
   renderCertPanel(data);
   renderTimeline(data);
+  renderSequencePanel(data);
   renderAiPolicy(data);
   renderRawJson(data.raw_manifest_json);
   showResults();
@@ -188,7 +168,6 @@ async function runVerify() {
   applyHistoryFilters();
 }
 
-// Sign flow
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -223,8 +202,6 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   a.href = url; a.download = signedFilename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
-
-// Render helpers
 
 function renderVerdict(d) {
   const titleEl = document.getElementById('trust-title');
@@ -276,13 +253,9 @@ function renderVerdict(d) {
   document.getElementById('kpi-certs').textContent      = (d.active_manifest && d.active_manifest.issuer) ? '1' : '0';
   document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
-  // UI CLEANUP
   let signalText = d.signal || 'None';
-  if (signalText.includes('—')) {
-      signalText = signalText.split('—')[0].trim();
-  } else if (signalText.includes('-')) {
-      signalText = signalText.split('-')[0].trim();
-  }
+  if (signalText.includes('—')) signalText = signalText.split('—')[0].trim();
+  else if (signalText.includes('-')) signalText = signalText.split('-')[0].trim();
   document.getElementById('sum-signal').textContent = signalText;
 
   document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded' : 'Detached';
@@ -327,6 +300,50 @@ function renderMetrics(d) {
      }).join('');
      mcActions.innerHTML = `<div class="mini-ledger" style="display:flex; flex-direction:column; max-height: 80px; overflow-y:auto; padding-right:4px;">${listHTML}</div>`;
   }
+}
+
+// NEW FUNCTION: Render Sequence Completeness Invariants
+function renderSequencePanel(d) {
+  const panel = document.getElementById('sequence-panel');
+  const grid = document.getElementById('sequence-grid');
+  const warn = document.getElementById('warn-omission');
+  
+  // Look for our custom sequence invariant assertion
+  const seq = d.active_manifest?.sequence_invariants || d.sequence_invariants;
+  
+  if (!seq) {
+    panel.classList.remove('visible');
+    warn.classList.remove('visible');
+    return;
+  }
+
+  const isOmitted = seq.actual_count < seq.expected_count;
+  
+  if (isOmitted) {
+      warn.classList.add('visible');
+      // Override trust ring to mathematically flag the sequence omission
+      document.getElementById('trust-title').textContent = 'SEQUENCE BROKEN';
+      document.getElementById('trust-title').className = 'trust-title title-INVALID';
+      document.getElementById('gauge-fill').className.baseVal = 'gauge-fill INVALID';
+      document.getElementById('status-icon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+  }
+
+  grid.innerHTML = `
+    <div class="data-item">
+      <span class="data-label">Sequence ID (Batch Hash)</span>
+      <span class="data-val" style="color:var(--cyan); text-transform:none;">${seq.batch_id || 'N/A'}</span>
+    </div>
+    <div class="data-item ${isOmitted ? 'val-notAllowed' : 'val-allowed'}">
+      <span class="data-label">Asset Completeness</span>
+      <span class="data-val">${seq.actual_count} / ${seq.expected_count} Present</span>
+    </div>
+    <div class="data-item ${isOmitted ? 'val-notAllowed' : 'val-allowed'}">
+      <span class="data-label">Merkle Root Status</span>
+      <span class="data-val">${isOmitted ? 'MISMATCH' : 'VERIFIED'}</span>
+    </div>
+  `;
+
+  panel.classList.add('visible');
 }
 
 function renderCertPanel(d) {
@@ -436,7 +453,6 @@ function renderTimeline(d) {
   graph.innerHTML = nodesHTML;
   panel.classList.add('visible');
 
-  // Bind interactive timeline drawers
   document.querySelectorAll('.pg-node').forEach(node => {
      node.addEventListener('click', () => {
          document.querySelectorAll('.pg-node').forEach(n => n.classList.remove('active'));
@@ -516,7 +532,6 @@ function renderRawJson(json) {
 
 document.getElementById('json-toggle').addEventListener('click', (e) => {
   if(e.target.closest('.json-actions')) return; 
-  
   const bar = e.currentTarget;
   const isExpanded = bar.classList.toggle('open');
   document.getElementById('json-viewer').classList.toggle('open');
@@ -554,11 +569,8 @@ document.getElementById('history-list').addEventListener('click', e => {
   
   if (entry.filename && currentFile && currentFile.name === entry.filename) {
      const isVid = entry.media_type && entry.media_type.startsWith('video');
-     if (isVid) {
-         document.getElementById('video-preview').style.display = 'block';
-     } else {
-         document.getElementById('preview-img').style.display = 'block';
-     }
+     if (isVid) document.getElementById('video-preview').style.display = 'block';
+     else document.getElementById('preview-img').style.display = 'block';
   }
   
   resetResults();
@@ -566,6 +578,7 @@ document.getElementById('history-list').addEventListener('click', e => {
   renderMetrics(entry);
   renderCertPanel(entry);
   renderTimeline(entry);
+  renderSequencePanel(entry);
   renderAiPolicy(entry);
   renderRawJson(entry.raw_manifest_json);
   showResults();
@@ -594,12 +607,12 @@ function showResults() {
 }
 
 function resetResults() {
-  ['warn-no-manifest','warn-invalid','warn-partial','warn-remote', 'warn-sys-error', 'warn-dev-cert'].forEach(id => {
+  ['warn-no-manifest','warn-invalid','warn-partial','warn-remote', 'warn-sys-error', 'warn-dev-cert', 'warn-omission'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('visible');
   });
   
-  ['cert-panel', 'timeline-panel', 'ai-policy-panel', 'download-bar'].forEach(id => {
+  ['cert-panel', 'timeline-panel', 'sequence-panel', 'ai-policy-panel', 'download-bar'].forEach(id => {
     document.getElementById(id).classList.remove('visible');
   });
   
@@ -631,14 +644,6 @@ function setLoading(on) {
     i = (i + 1) % steps.length;
     actionBtn.textContent = steps[i];
   }, 400);
-}
-
-function showBanner(id, msg) {
-  const el = document.getElementById(id);
-  if (id === 'warn-sys-error') {
-     document.getElementById('warn-sys-text').textContent = msg;
-  }
-  el.classList.add('visible');
 }
 
 applyHistoryFilters();
