@@ -29,6 +29,13 @@ export function renderWorkspace() {
           TAMPER DETECTED — Signature validation failed. Content altered post-signing.
           <button class="banner-close" onclick="this.parentElement.classList.remove('visible')">×</button>
         </div>
+
+        <!-- NEW: Omission Warning -->
+        <div id="warn-omission" class="warning-banner warn-red">
+          <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          OMISSION DETECTED — Cryptographic sequence broken. Assets are missing from the original batch.
+          <button class="banner-close" onclick="this.parentElement.classList.remove('visible')">×</button>
+        </div>
         
         <div id="warn-partial" class="warning-banner warn-amber">
           <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
@@ -48,7 +55,6 @@ export function renderWorkspace() {
           <button class="banner-close" onclick="this.parentElement.classList.remove('visible')">×</button>
         </div>
 
-        <!-- NEW: Source Evidence Viewer -->
         <div class="media-panel" id="preview-wrapper">
           <div class="media-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> Source Evidence</div>
           <div class="media-content">
@@ -57,7 +63,6 @@ export function renderWorkspace() {
           </div>
         </div>
 
-        <!-- Executive Panel (Fluff metrics deleted) -->
         <div class="executive-panel" id="executive-panel">
           <div class="exec-left">
             <div class="trust-ring-box">
@@ -99,11 +104,14 @@ export function renderWorkspace() {
 
         <div class="metrics-row">
           <div class="metric-card"><div class="mc-label">File Format</div><div class="mc-val" id="mc-type">N/A</div><span class="mc-sub">MIME Verified</span></div>
-          
-          <!-- EDITS CARD REBUILT: Now acts as a scrolling list of actions instead of just a number -->
           <div class="metric-card"><div class="mc-label">Historical Actions</div><div class="mc-val" id="mc-actions" style="margin-bottom:0; font-weight:normal;">0</div></div>
-          
           <div class="metric-card" style="grid-column: span 2"><div class="mc-label">Signature Alg</div><div class="mc-val" id="mc-alg">N/A</div><span class="mc-sub">Cryptographic Method</span></div>
+        </div>
+
+        <!-- NEW: Sequence Completeness Panel -->
+        <div id="sequence-panel" class="panel">
+          <div class="panel-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> Sequence Completeness Invariants</div>
+          <div class="data-grid" id="sequence-grid"></div>
         </div>
 
         <div id="cert-panel" class="panel">
