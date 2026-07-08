@@ -4,6 +4,8 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
+// ── Mount Layout ────────────────────────────────────────────────────────────
+// Injects the sidebar and workspace components into the main #app container
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -11,17 +13,22 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-let currentFile    = null;
-let currentMode    = 'verify';  
-let sessionHistory = [];
-let signedBlob     = null;
-let signedFilename = null;
-let loadingInterval= null;
+// ── Application State ────────────────────────────────────────────────────────
+let currentFile    = null;      // Holds the currently uploaded File object
+let currentMode    = 'verify';  // Tracks active mode: 'verify' or 'sign'
+let sessionHistory = [];        // Stores all scans run during this session
+let signedBlob     = null;      // Holds the output file after signing
+let signedFilename = null;      // Stores the generated filename for downloads
+let loadingInterval= null;      // Controls the UI loading text animation
 
-let activeFilter = 'ALL';
-let searchQuery = '';
+// Filter Engine State
+let activeFilter = 'ALL';       // Tracks the active history filter (ALL, VALID, INVALID)
+let searchQuery = '';           // Tracks current text in the history search bar
+
+// Cache for the source media viewer to prevent memory leaks
 let objectUrlCache = null;
 
+// ── DOM Element References ───────────────────────────────────────────────────
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -32,6 +39,8 @@ const signOpts   = document.getElementById('sign-options');
 const previewImg   = document.getElementById('preview-img');
 const videoPreview = document.getElementById('video-preview');
 
+// ── Strict Forensic Date Formatter ───────────────────────────────────────────
+// Forces all timestamps into a standard, readable chronological format
 function formatDateTime(isoString) {
   if (!isoString) return "--";
   const d = new Date(isoString);
@@ -41,23 +50,30 @@ function formatDateTime(isoString) {
   });
 }
 
+// ── Filter Engine ────────────────────────────────────────────────────────────
+// Filters the session history array based on the active chip and search query
 function applyHistoryFilters() {
   let filtered = sessionHistory;
+  
   if (activeFilter !== 'ALL') {
       filtered = filtered.filter(item => item.status === activeFilter);
   }
+  
   if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(item => item.filename && item.filename.toLowerCase().includes(q));
   }
+  
   updateHistory(filtered, sessionHistory);
 }
 
+// Search bar listener
 document.getElementById('history-search').addEventListener('input', (e) => {
     searchQuery = e.target.value;
     applyHistoryFilters();
 });
 
+// Filter chip listeners
 document.querySelectorAll('.filter-chip').forEach(btn => {
     btn.addEventListener('click', (e) => {
         document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
@@ -67,8 +83,11 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
     });
 });
 
+// ── File Ingestion Listeners ─────────────────────────────────────────────────
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+// Drag and drop UX handling
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop', e => {
@@ -77,10 +96,12 @@ dropZone.addEventListener('drop', e => {
   handleFile(e.dataTransfer.files[0]);
 });
 
+// Processes the raw file, sets up the media preview, and resets UI state
 function handleFile(file) {
   if (!file) return;
   currentFile = file;
   
+  // Clear old memory cache to prevent UI slow down
   if (objectUrlCache) URL.revokeObjectURL(objectUrlCache);
   objectUrlCache = URL.createObjectURL(file);
   
@@ -88,6 +109,7 @@ function handleFile(file) {
   previewImg.style.display = 'none';
   videoPreview.style.display = 'none';
   
+  // Route media to the correct HTML tag
   if (isVid) { 
     videoPreview.src = objectUrlCache; 
     videoPreview.style.display = 'block'; 
@@ -96,18 +118,24 @@ function handleFile(file) {
     previewImg.style.display = 'block'; 
   }
 
+  // Update action button text based on active mode
   const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
   actionBtn.disabled   = false;
   actionBtn.textContent= `${label}: ${file.name.length > 20 ? file.name.slice(0,18)+'…' : file.name}`;
   resetResults();
 }
 
+// ── Operation Mode Switching (Verify vs. Sign) ───────────────────────────────
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
+    
+    // Toggle active UI classes
     modeVerify.classList.toggle('active', currentMode === 'verify');
     modeSigning.classList.toggle('active', currentMode === 'sign');
     signOpts.classList.toggle('visible', currentMode === 'sign');
+    
+    // Update button dynamically if a file is already loaded
     if (currentFile) {
       const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
       actionBtn.textContent = `${label}: ${currentFile.name}`;
@@ -116,6 +144,7 @@ function handleFile(file) {
   });
 });
 
+// ── Main Execution Pipeline ──────────────────────────────────────────────────
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -128,12 +157,16 @@ actionBtn.addEventListener('click', async () => {
       await runSign();
     }
   } catch (err) {
+    // Handle total pipeline failure (e.g. backend server is down)
     document.getElementById('warn-sys-text').textContent = `PIPELINE ERROR: ${err.message}`;
     document.getElementById('warn-sys-error').classList.add('visible');
+    
+    // Hide standard result panels since the pipeline failed
     document.getElementById('executive-panel').style.display = 'none';
     document.querySelector('.kpi-strip').style.display = 'none';
     document.querySelector('.metrics-row').style.display = 'none';
     document.getElementById('json-panel-container').classList.remove('visible');
+    
     document.getElementById('idle-state').style.display = 'none';
     document.getElementById('result-state').classList.add('visible');
   } finally {
@@ -141,8 +174,10 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
+// ── 1. Verification Flow ──────────────────────────────────────────────────────
 async function runVerify() {
   const data = await verifyFile(currentFile);
+  
   if (data._rateLimited) {
     document.getElementById('warn-sys-text').textContent = 'Rate limit reached — please wait before retrying.';
     document.getElementById('warn-sys-error').classList.add('visible');
@@ -150,15 +185,17 @@ async function runVerify() {
     return;
   }
 
+  // Trigger all UI rendering functions
   renderVerdict(data);
   renderMetrics(data);
   renderCertPanel(data);
   renderTimeline(data);
-  renderSequencePanel(data);
+  renderSequencePanel(data); // Injects the custom omission detection UI
   renderAiPolicy(data);
   renderRawJson(data.raw_manifest_json);
   showResults();
 
+  // Log to session history
   const entry = {
     ...data,
     _idx:  sessionHistory.length,
@@ -168,6 +205,7 @@ async function runVerify() {
   applyHistoryFilters();
 }
 
+// ── 2. Signing Flow ───────────────────────────────────────────────────────────
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -180,10 +218,12 @@ async function runSign() {
   signedBlob     = result.blob;
   signedFilename = result.filename;
 
+  // Show the download export bar
   const dlBar = document.getElementById('download-bar');
   dlBar.classList.add('visible');
   showResults();
 
+  // Log the signature event to history
   sessionHistory.unshift({
     status:     'SIGNED',
     filename:   currentFile.name,
@@ -195,14 +235,18 @@ async function runSign() {
   applyHistoryFilters();
 }
 
+// Download newly signed asset
 document.getElementById('dl-btn').addEventListener('click', () => {
   if (!signedBlob) return;
   const url = URL.createObjectURL(signedBlob);
   const a   = document.createElement('a');
   a.href = url; a.download = signedFilename; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  setTimeout(() => URL.revokeObjectURL(url), 5000); // Cleanup memory
 });
 
+// ── UI Render Helpers ─────────────────────────────────────────────────────────
+
+// Renders the main Trust Ring and Evidence Summary logic
 function renderVerdict(d) {
   const titleEl = document.getElementById('trust-title');
   const subEl   = document.getElementById('trust-sub');
@@ -225,10 +269,11 @@ function renderVerdict(d) {
     REMOTE_MANIFEST: { sub: "Credentials hosted remotely." }
   };
 
+  // Calculate dynamic fill for the SVG trust ring based on status
   let fillPercent = 0;
   if (d.status === 'VALID' || d.status === 'REMOTE_MANIFEST') fillPercent = 100;
   else if (d.status === 'PARTIAL') fillPercent = 50;
-  else if (d.status === 'INVALID') fillPercent = 100;
+  else if (d.status === 'INVALID') fillPercent = 100; // Complete red ring
   else fillPercent = 5; 
   
   titleEl.textContent = d.status === 'VALID' ? 'FULLY VERIFIED' : d.status.replace('_', ' ');
@@ -243,16 +288,19 @@ function renderVerdict(d) {
     fillEl.style.strokeDashoffset = 295.3 - (295.3 * (fillPercent / 100));
   }, 100);
 
+  // Extract total assertions from the raw manifest to populate the KPI strip
   const mCount = d.manifests?.length || 0;
   let aCount = 0;
   if(d.raw_manifest_json && d.raw_manifest_json.manifests) {
       aCount = Object.keys(d.raw_manifest_json.manifests).reduce((acc, k) => acc + (d.raw_manifest_json.manifests[k].assertions?.length || 0), 0);
   }
+  
   document.getElementById('kpi-manifests').textContent  = mCount;
   document.getElementById('kpi-assertions').textContent = aCount;
   document.getElementById('kpi-certs').textContent      = (d.active_manifest && d.active_manifest.issuer) ? '1' : '0';
   document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
+  // UI CLEANUP: Strip verbose backend error messages at the em-dash to save space
   let signalText = d.signal || 'None';
   if (signalText.includes('—')) signalText = signalText.split('—')[0].trim();
   else if (signalText.includes('-')) signalText = signalText.split('-')[0].trim();
@@ -260,6 +308,7 @@ function renderVerdict(d) {
 
   document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded' : 'Detached';
   
+  // Format the SHA fingerprint with a copy button
   const fullSha = d.file_sha256 || '';
   if (fullSha) {
     const shortSha = fullSha.slice(0, 16);
@@ -268,17 +317,20 @@ function renderVerdict(d) {
     document.getElementById('sum-sha').textContent = 'None';
   }
 
+  // Toggle contextual warning banners
   document.getElementById('warn-no-manifest').classList.toggle('visible', d.status === 'NO_MANIFEST');
   document.getElementById('warn-invalid').classList.toggle('visible',     d.status === 'INVALID');
   document.getElementById('warn-partial').classList.toggle('visible',     d.status === 'PARTIAL');
   document.getElementById('warn-remote').classList.toggle('visible',      d.status === 'REMOTE_MANIFEST');
 }
 
+// Renders the Edits Ledger and basic file metrics
 function renderMetrics(d) {
   const m = d.active_manifest;
   document.getElementById('mc-type').textContent = d.media_type || 'N/A';
   document.getElementById('mc-alg').textContent  = m?.signing_algorithm || 'N/A';
   
+  // Build the scrolling mini-ledger for Historical Actions
   const tl = d.edit_timeline || [];
   const mcActions = document.getElementById('mc-actions');
   if (tl.length === 0) {
@@ -302,13 +354,13 @@ function renderMetrics(d) {
   }
 }
 
-// NEW FUNCTION: Render Sequence Completeness Invariants
+// ── CUSTOM LOGIC: Sequence Completeness (Omission Detection) ────────────────
 function renderSequencePanel(d) {
   const panel = document.getElementById('sequence-panel');
   const grid = document.getElementById('sequence-grid');
   const warn = document.getElementById('warn-omission');
   
-  // Look for our custom sequence invariant assertion
+  // Check if the backend detected a sequence invariant block in the manifest
   const seq = d.active_manifest?.sequence_invariants || d.sequence_invariants;
   
   if (!seq) {
@@ -317,17 +369,19 @@ function renderSequencePanel(d) {
     return;
   }
 
+  // Detect omission if actual assets present don't match the expected batch size
   const isOmitted = seq.actual_count < seq.expected_count;
   
   if (isOmitted) {
       warn.classList.add('visible');
-      // Override trust ring to mathematically flag the sequence omission
+      // Override the main trust ring to explicitly flag the omission attack
       document.getElementById('trust-title').textContent = 'SEQUENCE BROKEN';
       document.getElementById('trust-title').className = 'trust-title title-INVALID';
       document.getElementById('gauge-fill').className.baseVal = 'gauge-fill INVALID';
       document.getElementById('status-icon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
   }
 
+  // Populate the invariant data grid
   grid.innerHTML = `
     <div class="data-item">
       <span class="data-label">Sequence ID (Batch Hash)</span>
@@ -346,14 +400,16 @@ function renderSequencePanel(d) {
   panel.classList.add('visible');
 }
 
+// Renders the X.509 Certificate details panel
 function renderCertPanel(d) {
   const m = d.active_manifest;
   if (!m || (!m.issuer && !m.cert_serial)) return;
 
   const panel = document.getElementById('cert-panel');
   const card  = document.getElementById('cert-card');
+  
+  // Flag known development certificates to warn analysts
   const isDev = m.issuer?.includes('Veritas') || m.issuer?.includes('Dev') || m.issuer?.includes('self');
-
   if (isDev) document.getElementById('warn-dev-cert').classList.add('visible');
 
   let fp = d.file_sha256 ? d.file_sha256.slice(0,16).toUpperCase() : 'N/A';
@@ -370,6 +426,7 @@ function renderCertPanel(d) {
   panel.classList.add('visible');
 }
 
+// Renders the interactive Provenance Graph timeline
 function renderTimeline(d) {
   const tl = d.edit_timeline;
   if (!tl || tl.length === 0) return;
@@ -377,8 +434,9 @@ function renderTimeline(d) {
   const panel = document.getElementById('timeline-panel');
   const graph = document.getElementById('pg-container');
   const drawer= document.getElementById('pg-drawer');
-  drawer.classList.remove('visible');
+  drawer.classList.remove('visible'); // Close drawer on new load
 
+  // Global object to map graph nodes to their raw metadata payload for the drawer
   window.__timelineMeta = {
       origin: { title: "Asset Origin", software: tl[0]?.software_agent || "Unknown", time: tl[0]?.timestamp || "Unknown", details: "Initial asset generation or capture." }
   };
@@ -388,6 +446,7 @@ function renderTimeline(d) {
       return soft.length > 20 ? soft.substring(0, 18) + '...' : soft;
   };
 
+  // Build the Origin Node
   let nodesHTML = `
     <div class="pg-node origin" data-step="origin">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></div>
@@ -397,6 +456,7 @@ function renderTimeline(d) {
     </div>
   `;
 
+  // Dynamically inject all subsequent edits
   tl.forEach((action, i) => {
     let type = action.action.includes('created') ? 'origin' : 'edit';
     if(type === 'edit') {
@@ -418,6 +478,7 @@ function renderTimeline(d) {
     }
   });
 
+  // Inject the Cryptographic Signature node
   if (d.status !== 'NO_MANIFEST') {
     window.__timelineMeta['sign'] = {
         title: "Cryptographic Signature",
@@ -435,6 +496,7 @@ function renderTimeline(d) {
     `;
   }
 
+  // Inject the Final Verification Engine node
   window.__timelineMeta['verify'] = {
       title: "Verification",
       software: "C2PA Veritas Engine",
@@ -453,6 +515,7 @@ function renderTimeline(d) {
   graph.innerHTML = nodesHTML;
   panel.classList.add('visible');
 
+  // Bind interactive click handlers to open metadata drawer below graph
   document.querySelectorAll('.pg-node').forEach(node => {
      node.addEventListener('click', () => {
          document.querySelectorAll('.pg-node').forEach(n => n.classList.remove('active'));
@@ -469,6 +532,7 @@ function renderTimeline(d) {
   });
 }
 
+// Parses and renders the AI Training assertion policies
 function renderAiPolicy(d) {
   const policy = d.active_manifest?.ai_training_policy;
   if (!policy || Object.keys(policy).length === 0) return;
@@ -476,6 +540,7 @@ function renderAiPolicy(d) {
   const panel = document.getElementById('ai-policy-panel');
   const grid  = document.getElementById('policy-grid');
 
+  // Human-readable map for the technical assertion keys
   const LABEL_MAP = {
     'c2pa.ai_generative_training': 'Generative AI Training',
     'c2pa.ai_inference':           'AI Inference Usage',
@@ -499,6 +564,7 @@ function renderAiPolicy(d) {
   panel.classList.add('visible');
 }
 
+// ── Raw Code JSON Viewer Logic ───────────────────────────────────────────────
 function renderRawJson(json) {
   if (!json) {
     document.getElementById('manifest-size').textContent = '0 KB';
@@ -507,11 +573,13 @@ function renderRawJson(json) {
     return;
   }
   
+  // Format the JSON data into a clean, pretty-printed string
   const strJson = JSON.stringify(json, null, 2);
   const sizeKB = (new Blob([strJson]).size / 1024).toFixed(1);
   document.getElementById('manifest-size').textContent = `${sizeKB} KB`;
   window.__currentRawJson = strJson;
 
+  // Perform basic syntax highlighting using Regex and create line numbers
   const lines = strJson.split('\n');
   let html = '';
   lines.forEach((line, index) => {
@@ -530,6 +598,7 @@ function renderRawJson(json) {
   document.getElementById('json-content').innerHTML = html;
 }
 
+// JSON Action Listeners (Expand, Copy, Download)
 document.getElementById('json-toggle').addEventListener('click', (e) => {
   if(e.target.closest('.json-actions')) return; 
   const bar = e.currentTarget;
@@ -560,6 +629,8 @@ document.getElementById('json-dl-btn').addEventListener('click', (e) => {
   }
 });
 
+// ── Session History State Logic ──────────────────────────────────────────────
+// Allows an analyst to click an old file scan in the sidebar and reload the UI state
 document.getElementById('history-list').addEventListener('click', e => {
   const item = e.target.closest('.hist-item');
   if (!item) return;
@@ -567,12 +638,14 @@ document.getElementById('history-list').addEventListener('click', e => {
   const entry = sessionHistory.find(h => h._idx === idx);
   if (!entry || entry.status === 'SIGNED') return;
   
+  // Conditionally restore the media preview window
   if (entry.filename && currentFile && currentFile.name === entry.filename) {
      const isVid = entry.media_type && entry.media_type.startsWith('video');
      if (isVid) document.getElementById('video-preview').style.display = 'block';
      else document.getElementById('preview-img').style.display = 'block';
   }
   
+  // Re-run all rendering logic for the old data object
   resetResults();
   renderVerdict(entry);
   renderMetrics(entry);
@@ -584,6 +657,7 @@ document.getElementById('history-list').addEventListener('click', e => {
   showResults();
 });
 
+// Wipes history completely 
 document.getElementById('clear-hist-btn').addEventListener('click', () => {
   sessionHistory = [];
   applyHistoryFilters();
@@ -595,6 +669,9 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
   actionBtn.textContent = 'AWAITING EVIDENCE';
 });
 
+// ── UI Lifecycle Management Utilities ────────────────────────────────────────
+
+// Swaps visibility from the idle dashboard to the active results wrapper
 function showResults() {
   document.getElementById('preview-wrapper').style.display = 'flex';
   document.getElementById('executive-panel').style.display = 'flex';
@@ -606,6 +683,7 @@ function showResults() {
   document.getElementById('result-state').classList.add('visible');
 }
 
+// Clears DOM and hides all panels prior to a new execution
 function resetResults() {
   ['warn-no-manifest','warn-invalid','warn-partial','warn-remote', 'warn-sys-error', 'warn-dev-cert', 'warn-omission'].forEach(id => {
     const el = document.getElementById(id);
@@ -622,12 +700,16 @@ function resetResults() {
   document.getElementById('json-expand-text').textContent = 'Expand ▼';
   document.getElementById('result-state').classList.remove('visible');
   
+  // Reset the Trust Ring SVG animation
   document.getElementById('gauge-fill').style.strokeDashoffset = 295.3;
   document.getElementById('status-icon').innerHTML = "";
+  
+  // Clear memory of previously signed blobs
   signedBlob = null;
   window.__currentRawJson = null;
 }
 
+// Controls action button UI during asynchronous API calls
 function setLoading(on) {
   actionBtn.disabled = on;
   if (!on) {
@@ -646,4 +728,5 @@ function setLoading(on) {
   }, 400);
 }
 
+// Initialize empty history view on page load
 applyHistoryFilters();
