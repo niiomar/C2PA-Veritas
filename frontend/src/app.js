@@ -4,7 +4,7 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// Mount layout
+// ── Mount layout ────────────────────────────────────────────────────────────
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -12,7 +12,7 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// State
+// ── State ────────────────────────────────────────────────────────────────────
 let currentFile    = null;
 let currentMode    = 'verify';  
 let sessionHistory = [];
@@ -20,11 +20,13 @@ let signedBlob     = null;
 let signedFilename = null;
 let loadingInterval= null;
 
-// PHASE 3: Filter State
+// Filter State
 let activeFilter = 'ALL';
 let searchQuery = '';
 
-// DOM refs
+let objectUrlCache = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -32,7 +34,24 @@ const modeVerify = document.getElementById('mode-verify');
 const modeSigning= document.getElementById('mode-sign');
 const signOpts   = document.getElementById('sign-options');
 
-// Filter Engine
+const previewImg   = document.getElementById('preview-img');
+const videoPreview = document.getElementById('video-preview');
+
+// ── Strict Forensic Date Formatter ───────────────────────────────────────────
+function formatDateTime(isoString) {
+  if (!isoString) return "--";
+  const d = new Date(isoString);
+  if (isNaN(d)) return isoString;
+  return d.toLocaleString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit' 
+  });
+}
+
+// ── Filter Engine ────────────────────────────────────────────────────────────
 function applyHistoryFilters() {
   let filtered = sessionHistory;
   
@@ -48,7 +67,7 @@ function applyHistoryFilters() {
   updateHistory(filtered, sessionHistory);
 }
 
-// Search & Filter Listeners
+// ── Search & Filter Listeners ────────────────────────────────────────────────
 document.getElementById('history-search').addEventListener('input', (e) => {
     searchQuery = e.target.value;
     applyHistoryFilters();
@@ -63,7 +82,7 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
     });
 });
 
-// File selection
+// ── File selection ───────────────────────────────────────────────────────────
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -77,13 +96,29 @@ dropZone.addEventListener('drop', e => {
 function handleFile(file) {
   if (!file) return;
   currentFile = file;
+  
+  if (objectUrlCache) URL.revokeObjectURL(objectUrlCache);
+  objectUrlCache = URL.createObjectURL(file);
+  
+  const isVid = file.type.startsWith('video/');
+  previewImg.style.display = 'none';
+  videoPreview.style.display = 'none';
+  
+  if (isVid) { 
+    videoPreview.src = objectUrlCache; 
+    videoPreview.style.display = 'block'; 
+  } else { 
+    previewImg.src = objectUrlCache; 
+    previewImg.style.display = 'block'; 
+  }
+
   const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
   actionBtn.disabled   = false;
   actionBtn.textContent= `${label}: ${file.name.length > 20 ? file.name.slice(0,18)+'…' : file.name}`;
   resetResults();
 }
 
-// Mode switching
+// ── Mode switching ───────────────────────────────────────────────────────────
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -98,7 +133,7 @@ function handleFile(file) {
   });
 });
 
-// Action
+// ── Action ───────────────────────────────────────────────────────────────────
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -126,7 +161,7 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// Verify flow
+// ── Verify flow ───────────────────────────────────────────────────────────────
 async function runVerify() {
   const data = await verifyFile(currentFile);
   if (data._rateLimited) {
@@ -147,13 +182,13 @@ async function runVerify() {
   const entry = {
     ...data,
     _idx:  sessionHistory.length,
-    _time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+    _time: formatDateTime(new Date().toISOString()),
   };
   sessionHistory.unshift(entry);
   applyHistoryFilters();
 }
 
-// Sign flow
+// ── Sign flow ─────────────────────────────────────────────────────────────────
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -176,7 +211,7 @@ async function runSign() {
     media_type: currentFile.type || 'N/A',
     manifests:  [{ assertions: [] }], 
     _idx:       sessionHistory.length,
-    _time:      new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+    _time:      formatDateTime(new Date().toISOString()),
   });
   applyHistoryFilters();
 }
@@ -189,7 +224,7 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
 
-// Render helpers
+// ── Render helpers ────────────────────────────────────────────────────────────
 
 function renderVerdict(d) {
   const titleEl = document.getElementById('trust-title');
@@ -206,11 +241,11 @@ function renderVerdict(d) {
   };
 
   const META = {
-    VALID: { sub: "Cryptographic signature verified and intact.", conf: "High", int: "Intact", chain: "Verified" },
-    INVALID: { sub: "Manifest present but validation failed.", conf: "Zero", int: "Compromised", chain: "Broken" },
-    PARTIAL: { sub: "Manifest contains validation errors.", conf: "Medium", int: "Partial", chain: "Incomplete" },
-    NO_MANIFEST: { sub: "Asset contains no digital provenance data.", conf: "Unknown", int: "Unverified", chain: "Absent" },
-    REMOTE_MANIFEST: { sub: "Credentials hosted remotely.", conf: "High", int: "Intact", chain: "Cloud-Verified" }
+    VALID: { sub: "Cryptographic signature verified and intact." },
+    INVALID: { sub: "Manifest present but validation failed." },
+    PARTIAL: { sub: "Manifest contains validation errors." },
+    NO_MANIFEST: { sub: "Asset contains no digital provenance data." },
+    REMOTE_MANIFEST: { sub: "Credentials hosted remotely." }
   };
 
   let fillPercent = 0;
@@ -222,18 +257,6 @@ function renderVerdict(d) {
   titleEl.textContent = d.status === 'VALID' ? 'FULLY VERIFIED' : d.status.replace('_', ' ');
   titleEl.className = `trust-title title-${d.status}`;
   subEl.textContent = META[d.status].sub;
-  
-  document.getElementById('tm-conf').textContent = META[d.status].conf;
-  document.getElementById('tm-int').textContent = META[d.status].int;
-  document.getElementById('tm-chain').textContent = META[d.status].chain;
-  
-  ['tm-conf', 'tm-int', 'tm-chain'].forEach(id => {
-      const el = document.getElementById(id);
-      el.className = 'tm-val'; 
-      if (el.textContent === 'Zero' || el.textContent === 'Compromised' || el.textContent === 'Broken') el.classList.add('color-red');
-      if (el.textContent === 'Medium' || el.textContent === 'Partial' || el.textContent === 'Incomplete') el.classList.add('color-amber');
-      if (el.textContent === 'High' || el.textContent === 'Intact' || el.textContent === 'Verified') el.classList.add('color-green');
-  });
   
   iconEl.className = `score-icon ${d.status}`;
   iconEl.innerHTML = ICONS[d.status] || ICONS.NO_MANIFEST;
@@ -253,7 +276,15 @@ function renderVerdict(d) {
   document.getElementById('kpi-certs').textContent      = (d.active_manifest && d.active_manifest.issuer) ? '1' : '0';
   document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
-  document.getElementById('sum-signal').textContent   = d.signal || 'None';
+  // UI CLEANUP: Strip verbose backend error messages at the em-dash
+  let signalText = d.signal || 'None';
+  if (signalText.includes('—')) {
+      signalText = signalText.split('—')[0].trim();
+  } else if (signalText.includes('-')) {
+      signalText = signalText.split('-')[0].trim();
+  }
+  document.getElementById('sum-signal').textContent = signalText;
+
   document.getElementById('sum-embedded').textContent = d.is_embedded ? 'Embedded' : 'Detached';
   
   const fullSha = d.file_sha256 || '';
@@ -272,9 +303,30 @@ function renderVerdict(d) {
 
 function renderMetrics(d) {
   const m = d.active_manifest;
-  document.getElementById('mc-actions').textContent   = d.edit_timeline?.length ?? '0';
-  document.getElementById('mc-type').textContent      = d.media_type || 'N/A';
-  document.getElementById('mc-alg').textContent       = m?.signing_algorithm || 'N/A';
+  document.getElementById('mc-type').textContent = d.media_type || 'N/A';
+  document.getElementById('mc-alg').textContent  = m?.signing_algorithm || 'N/A';
+  
+  const tl = d.edit_timeline || [];
+  const mcActions = document.getElementById('mc-actions');
+  if (tl.length === 0) {
+     mcActions.innerHTML = `<span style="font-size:15px; font-weight:700; color:var(--text-hi);">0</span>`;
+  } else {
+     let listHTML = tl.map(a => {
+         const actionName = a.action.split('.').pop().toUpperCase();
+         const timeStr = a.timestamp ? formatDateTime(a.timestamp) : 'Unknown Date';
+         const softStr = a.software_agent ? (a.software_agent.length > 18 ? a.software_agent.slice(0, 18) + '…' : a.software_agent) : 'Unknown Software';
+
+         return `
+         <div style="font-size:10px; padding:6px 0; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:var(--cyan); font-weight:700; font-family:var(--mono);">${actionName}</span>
+                <span style="color:var(--text-dim); font-size:8px; font-family:var(--mono);">${timeStr}</span>
+            </div>
+            <span style="color:var(--text-mid); font-size:9px;" title="${a.software_agent}">▶ ${softStr}</span>
+         </div>`;
+     }).join('');
+     mcActions.innerHTML = `<div class="mini-ledger" style="display:flex; flex-direction:column; max-height: 80px; overflow-y:auto; padding-right:4px;">${listHTML}</div>`;
+  }
 }
 
 function renderCertPanel(d) {
@@ -313,12 +365,18 @@ function renderTimeline(d) {
   window.__timelineMeta = {
       origin: { title: "Asset Origin", software: tl[0]?.software_agent || "Unknown", time: tl[0]?.timestamp || "Unknown", details: "Initial asset generation or capture." }
   };
+  
+  const formatSoft = (soft) => {
+      if(!soft) return "Unknown";
+      return soft.length > 20 ? soft.substring(0, 18) + '...' : soft;
+  };
 
   let nodesHTML = `
     <div class="pg-node origin" data-step="origin">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></div>
       <span class="pg-label">Origin</span>
-      <span class="pg-sub">Capture/Creation</span>
+      <span class="pg-sub" style="color:var(--text-mid)">${formatSoft(tl[0]?.software_agent)}</span>
+      <span class="pg-sub" style="opacity:0.6">${formatDateTime(tl[0]?.timestamp)}</span>
     </div>
   `;
 
@@ -330,13 +388,14 @@ function renderTimeline(d) {
           title: action.action.split('.').pop().toUpperCase(),
           software: action.software_agent || "Unknown Editor",
           time: action.timestamp || "Unknown Time",
-          details: `Action: ${action.action}`
+          details: action.parameters ? JSON.stringify(action.parameters) : `Action: ${action.action}`
       };
       nodesHTML += `
         <div class="pg-node edit" data-step="${stepId}">
           <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></div>
           <span class="pg-label">${action.action.split('.').pop().toUpperCase()}</span>
-          <span class="pg-sub">${action.software_agent ? action.software_agent.split(' ')[0] : 'Editor'}</span>
+          <span class="pg-sub" style="color:var(--text-mid)">${formatSoft(action.software_agent)}</span>
+          <span class="pg-sub" style="opacity:0.6">${formatDateTime(action.timestamp)}</span>
         </div>
       `;
     }
@@ -353,7 +412,8 @@ function renderTimeline(d) {
       <div class="pg-node sign" data-step="sign">
         <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
         <span class="pg-label">Signed</span>
-        <span class="pg-sub">${d.active_manifest?.issuer ? d.active_manifest.issuer.split(' ')[0] : 'Credentials'}</span>
+        <span class="pg-sub" style="color:var(--text-mid)">${formatSoft(d.active_manifest?.issuer)}</span>
+        <span class="pg-sub" style="opacity:0.6">--</span>
       </div>
     `;
   }
@@ -368,7 +428,8 @@ function renderTimeline(d) {
     <div class="pg-node verify" data-step="verify">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
       <span class="pg-label">Verified</span>
-      <span class="pg-sub">C2PA Veritas</span>
+      <span class="pg-sub" style="color:var(--text-mid)">C2PA Veritas</span>
+      <span class="pg-sub" style="opacity:0.6">${formatDateTime(new Date().toISOString())}</span>
     </div>
   `;
 
@@ -384,11 +445,7 @@ function renderTimeline(d) {
          if(meta) {
              document.getElementById('drawer-title').textContent = meta.title;
              document.getElementById('drawer-software').textContent = meta.software;
-             
-             let timeStr = meta.time;
-             if(Date.parse(timeStr)) timeStr = new Date(timeStr).toLocaleString();
-             document.getElementById('drawer-time').textContent = timeStr;
-             
+             document.getElementById('drawer-time').textContent = formatDateTime(meta.time);
              document.getElementById('drawer-details').textContent = meta.details;
              drawer.classList.add('visible');
          }
@@ -426,7 +483,6 @@ function renderAiPolicy(d) {
   panel.classList.add('visible');
 }
 
-// VS Code Style Render
 function renderRawJson(json) {
   if (!json) {
     document.getElementById('manifest-size').textContent = '0 KB';
@@ -444,13 +500,13 @@ function renderRawJson(json) {
   let html = '';
   lines.forEach((line, index) => {
     let highlighted = line.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
-      let cls = 'json-number';
+      let cls = 'number';
       if (/^"/.test(match)) {
-          if (/:$/.test(match)) { cls = 'json-key'; }
-          else { cls = 'json-string'; }
-      } else if (/true|false/.test(match)) { cls = 'json-boolean'; }
-      else if (/null/.test(match)) { cls = 'json-null'; }
-      return '<span class="' + cls + '">' + match + '</span>';
+          if (/:$/.test(match)) { cls = 'key'; } 
+          else { cls = 'string'; }
+      } else if (/true|false/.test(match)) { cls = 'boolean'; } 
+      else if (/null/.test(match)) { cls = 'null'; }
+      return '<span class="json-' + cls + '">' + match + '</span>';
     });
     html += `<div class="json-line"><span class="json-line-num">${index + 1}</span><span class="json-line-code">${highlighted}</span></div>`;
   });
@@ -458,7 +514,6 @@ function renderRawJson(json) {
   document.getElementById('json-content').innerHTML = html;
 }
 
-// JSON Actions
 document.getElementById('json-toggle').addEventListener('click', (e) => {
   if(e.target.closest('.json-actions')) return; 
   
@@ -490,13 +545,22 @@ document.getElementById('json-dl-btn').addEventListener('click', (e) => {
   }
 });
 
-// History click → re-render
 document.getElementById('history-list').addEventListener('click', e => {
   const item = e.target.closest('.hist-item');
   if (!item) return;
   const idx   = parseInt(item.dataset.idx);
   const entry = sessionHistory.find(h => h._idx === idx);
   if (!entry || entry.status === 'SIGNED') return;
+  
+  if (entry.filename && currentFile && currentFile.name === entry.filename) {
+     const isVid = entry.media_type && entry.media_type.startsWith('video');
+     if (isVid) {
+         document.getElementById('video-preview').style.display = 'block';
+     } else {
+         document.getElementById('preview-img').style.display = 'block';
+     }
+  }
+  
   resetResults();
   renderVerdict(entry);
   renderMetrics(entry);
@@ -518,8 +582,8 @@ document.getElementById('clear-hist-btn').addEventListener('click', () => {
   actionBtn.textContent = 'AWAITING EVIDENCE';
 });
 
-// Utilities
 function showResults() {
+  document.getElementById('preview-wrapper').style.display = 'flex';
   document.getElementById('executive-panel').style.display = 'flex';
   document.querySelector('.kpi-strip').style.display = 'flex';
   document.querySelector('.metrics-row').style.display = 'grid';
