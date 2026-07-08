@@ -4,7 +4,7 @@ import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile } from './utils/api.js';
 
-// ── Mount layout ────────────────────────────────────────────────────────────
+// Mount layout
 document.getElementById('app').innerHTML = `
   <div class="layout">
     ${renderSidebar()}
@@ -12,7 +12,7 @@ document.getElementById('app').innerHTML = `
   </div>
 `;
 
-// ── State ────────────────────────────────────────────────────────────────────
+// State
 let currentFile    = null;
 let currentMode    = 'verify';  
 let sessionHistory = [];
@@ -26,7 +26,7 @@ let searchQuery = '';
 
 let objectUrlCache = null;
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
+// DOM refs
 const dropZone   = document.getElementById('drop-zone');
 const fileInput  = document.getElementById('file-input');
 const actionBtn  = document.getElementById('action-btn');
@@ -37,7 +37,7 @@ const signOpts   = document.getElementById('sign-options');
 const previewImg   = document.getElementById('preview-img');
 const videoPreview = document.getElementById('video-preview');
 
-// ── Strict Forensic Date Formatter ───────────────────────────────────────────
+// Strict Forensic Date Formatter
 function formatDateTime(isoString) {
   if (!isoString) return "--";
   const d = new Date(isoString);
@@ -51,7 +51,7 @@ function formatDateTime(isoString) {
   });
 }
 
-// ── Filter Engine ────────────────────────────────────────────────────────────
+// Filter Engine
 function applyHistoryFilters() {
   let filtered = sessionHistory;
   
@@ -67,7 +67,7 @@ function applyHistoryFilters() {
   updateHistory(filtered, sessionHistory);
 }
 
-// ── Search & Filter Listeners ────────────────────────────────────────────────
+// Search & Filter Listeners
 document.getElementById('history-search').addEventListener('input', (e) => {
     searchQuery = e.target.value;
     applyHistoryFilters();
@@ -82,7 +82,7 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
     });
 });
 
-// ── File selection ───────────────────────────────────────────────────────────
+// File selection
 dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -118,7 +118,7 @@ function handleFile(file) {
   resetResults();
 }
 
-// ── Mode switching ───────────────────────────────────────────────────────────
+// Mode switching
 [modeVerify, modeSigning].forEach(btn => {
   btn.addEventListener('click', () => {
     currentMode = btn.dataset.mode;
@@ -133,7 +133,7 @@ function handleFile(file) {
   });
 });
 
-// ── Action ───────────────────────────────────────────────────────────────────
+// Action
 actionBtn.addEventListener('click', async () => {
   if (!currentFile) return;
   setLoading(true);
@@ -161,7 +161,7 @@ actionBtn.addEventListener('click', async () => {
   }
 });
 
-// ── Verify flow ───────────────────────────────────────────────────────────────
+// Verify flow
 async function runVerify() {
   const data = await verifyFile(currentFile);
   if (data._rateLimited) {
@@ -188,7 +188,7 @@ async function runVerify() {
   applyHistoryFilters();
 }
 
-// ── Sign flow ─────────────────────────────────────────────────────────────────
+// Sign flow
 async function runSign() {
   const opts = {
     action:          document.getElementById('sign-action').value,
@@ -224,7 +224,7 @@ document.getElementById('dl-btn').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
 
-// ── Render helpers ────────────────────────────────────────────────────────────
+// Render helpers
 
 function renderVerdict(d) {
   const titleEl = document.getElementById('trust-title');
@@ -276,7 +276,7 @@ function renderVerdict(d) {
   document.getElementById('kpi-certs').textContent      = (d.active_manifest && d.active_manifest.issuer) ? '1' : '0';
   document.getElementById('kpi-time').textContent       = `${d.processing_time_sec}s`;
 
-  // UI CLEANUP: Strip verbose backend error messages at the em-dash
+  // UI CLEANUP
   let signalText = d.signal || 'None';
   if (signalText.includes('—')) {
       signalText = signalText.split('—')[0].trim();
