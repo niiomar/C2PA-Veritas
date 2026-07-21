@@ -7,7 +7,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from core.extractor import ProvenanceStatus, extract_provenance
 
-
 def _blank_jpeg() -> bytes:
     """Minimal valid JPEG bytes (1×1 white pixel)."""
     return bytes([
@@ -41,7 +40,6 @@ def _blank_jpeg() -> bytes:
         0x00,0x00,0x3F,0x00,0xFB,0xD3,0xFF,0xD9
     ])
 
-
 def test_no_manifest_jpeg():
     data = _blank_jpeg()
     report = extract_provenance(data, "test.jpg", "abc123")
@@ -49,7 +47,6 @@ def test_no_manifest_jpeg():
     assert report.manifests == []
     assert report.edit_timeline == []
     assert "No C2PA" in report.signal
-
 
 def test_report_fields_populated():
     data = _blank_jpeg()
