@@ -8,7 +8,6 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, Header, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +33,6 @@ CORS_ORIGINS = [o.strip() for o in os.getenv(
 
 API_KEY = os.getenv("API_KEY", "").strip()
 
-
 # Authentication Middleware
 # Secures the API endpoints so only authorized clients can trigger forensic scans
 async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-KEY")):
@@ -42,7 +40,6 @@ async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-A
         return
     if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key.")
-
 
 # Application Initialization
 @asynccontextmanager
@@ -62,7 +59,6 @@ app.add_middleware(
     allow_headers     = ["Content-Type", "X-API-KEY"],
 )
 
-
 # Data Serialization
 # Converts the internal Python dataclass into a JSON-safe dictionary for the API response
 def _report_to_dict(report: ProvenanceReport) -> dict:
@@ -70,12 +66,10 @@ def _report_to_dict(report: ProvenanceReport) -> dict:
     d["status"] = report.status.value
     return d
 
-
 # API Routing: Diagnostics
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": VERSION}
-
 
 # API Routing: Core Forensic Verification
 @app.post("/api/v1/verify", dependencies=[Depends(verify_api_key)])
@@ -117,7 +111,6 @@ async def verify(
     result = _report_to_dict(report)
     result["processing_time_sec"] = processing_sec
     return result
-
 
 # API Routing: Cryptographic Signing
 @app.post("/api/v1/sign", dependencies=[Depends(verify_api_key)])
@@ -166,12 +159,10 @@ async def sign(
         headers      = {"Content-Disposition": f'attachment; filename="{outname}"'},
     )
 
-
 # API Routing: Audit History
 @app.get("/api/v1/history", dependencies=[Depends(verify_api_key)])
 async def history(limit: int = Query(default=50, le=200)):
     return {"entries": get_recent(limit)}
-
 
 @app.get("/api/v1/history/{file_hash}", dependencies=[Depends(verify_api_key)])
 async def history_by_hash(file_hash: str):
@@ -179,7 +170,6 @@ async def history_by_hash(file_hash: str):
     if not entries:
         raise HTTPException(404, "No records for this file hash.")
     return {"entries": entries}
-
 
 # Static File Serving
 # Points the FastAPI backend to the compiled Vite frontend directory
