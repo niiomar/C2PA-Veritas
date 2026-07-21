@@ -4,13 +4,11 @@ C2PA Manifest Signer
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 """
-
 import io
 import json
 import logging
 import datetime
 from pathlib import Path
-
 import c2pa
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -18,7 +16,6 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger(__name__)
-
 
 # Public signing function
 def sign_media(
@@ -41,7 +38,6 @@ def sign_media(
     if cert_pem is None or key_pem is None:
         cert_pem, key_pem = _get_dev_credentials()
 
-    
     # Build manifest definition
     assertions = [
         {
@@ -81,8 +77,7 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
-    
-    # Smart fallback for c2pa-python versions
+    # fallback for c2pa-python versions
     if hasattr(c2pa, "Signer"):
         alg = getattr(c2pa, "C2paSigningAlg", getattr(c2pa, "SigningAlg", None))
         with c2pa.Signer.from_callback(
@@ -104,7 +99,6 @@ def sign_media(
         builder.sign(signer, mime_type, source_stream, dest_stream)
 
     return dest_stream.getvalue()
-
 
 # Dev certificate helpers
 _DEV_CERT_PEM: bytes | None = None
@@ -156,7 +150,6 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
     ])
     
     leaf_ski = x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key())
-
     
     # Pass the root_ski object directly instead of .digest
     leaf_aki = x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(root_ski)
@@ -201,7 +194,6 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
     logger.warning("Using auto-generated 2-tier certificate chain for C2PA testing.")
     return _DEV_CERT_PEM, _DEV_KEY_PEM
 
-
 def _make_sign_fn(key_pem: bytes):
     from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
     
@@ -218,7 +210,6 @@ def _make_sign_fn(key_pem: bytes):
         return r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
         
     return sign
-
 
 def _ext_to_mime(ext: str) -> str:
     return {
