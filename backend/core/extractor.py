@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
-
 import c2pa
 
 logger = logging.getLogger(__name__)
@@ -28,7 +27,6 @@ class ProvenanceStatus(str, Enum):
     PARTIAL          = "PARTIAL"          # Some assertions valid, others failed
     REMOTE_MANIFEST  = "REMOTE_MANIFEST"  # Manifest hosted remotely (not embedded)
 
-
 @dataclass
 class ActionEntry:
     """A single action/edit in the manifest's action assertion history."""
@@ -38,7 +36,6 @@ class ActionEntry:
     digital_source:   str | None = None
     description:      str | None = None
     raw:              dict = field(default_factory=dict)
-
 
 @dataclass
 class ManifestSummary:
@@ -54,7 +51,6 @@ class ManifestSummary:
     actions:            list[ActionEntry]
     ai_training_policy: dict | None
     ingredients:        list[str]
-
 
 @dataclass
 class ProvenanceReport:
@@ -72,9 +68,8 @@ class ProvenanceReport:
     is_embedded:          bool
     remote_manifest_url:  str | None
     raw_manifest_json:    dict | None
-    signal:               str                 # human-readable one-line verdict
+    signal:               str                
     disclaimer:           str
-
 
 DISCLAIMER = (
     "C2PA provenance data is only as trustworthy as the issuing certificate chain. "
@@ -82,7 +77,6 @@ DISCLAIMER = (
     "content itself is authentic. Absence of a manifest is not proof of manipulation "
     "many legitimate media files predate C2PA adoption."
 )
-
 
 # Main extraction function
 def extract_provenance(
@@ -287,7 +281,6 @@ def _build_timeline(
 
     return timeline
 
-
 def _build_signal(
     status:   ProvenanceStatus,
     active:   ManifestSummary | None,
@@ -319,7 +312,6 @@ def _build_signal(
 
     return "Valid C2PA manifest with no detailed action assertions."
 
-
 def _no_manifest_report(filename: str, sha256: str, media_type: str) -> ProvenanceReport:
     return ProvenanceReport(
         filename             = filename,
@@ -339,7 +331,6 @@ def _no_manifest_report(filename: str, sha256: str, media_type: str) -> Provenan
         disclaimer           = DISCLAIMER,
     )
 
-
 def _error_report(filename: str, sha256: str, media_type: str, error: str) -> ProvenanceReport:
     return ProvenanceReport(
         filename             = filename,
@@ -358,7 +349,6 @@ def _error_report(filename: str, sha256: str, media_type: str, error: str) -> Pr
         signal               = f"Error reading manifest: {error}",
         disclaimer           = DISCLAIMER,
     )
-
 
 def _ext_to_mime(ext: str) -> str:
     return {
