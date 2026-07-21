@@ -10,7 +10,6 @@ from contextlib import contextmanager
 
 AUDIT_DB_PATH = os.getenv("AUDIT_DB_PATH", "audit_log.db")
 
-
 def _init_db():
     with _connect() as conn:
         conn.execute("""
@@ -31,7 +30,6 @@ def _init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON provenance_log(file_sha256)")
         conn.commit()
 
-
 @contextmanager
 def _connect():
     conn = sqlite3.connect(AUDIT_DB_PATH)
@@ -40,13 +38,10 @@ def _connect():
     finally:
         conn.close()
 
-
 _init_db()
-
 
 def sha256_of_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
 
 def log_check(file_bytes: bytes, filename: str, report, processing_sec: float):
     try:
@@ -71,7 +66,6 @@ def log_check(file_bytes: bytes, filename: str, report, processing_sec: float):
         print(f"[Audit] Failed to log: {e}")
         return None
 
-
 def get_recent(limit: int = 50) -> list[dict]:
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
@@ -79,7 +73,6 @@ def get_recent(limit: int = 50) -> list[dict]:
             "SELECT * FROM provenance_log ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
-
 
 def get_by_hash(file_hash: str) -> list[dict]:
     with _connect() as conn:
