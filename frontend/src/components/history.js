@@ -1,3 +1,5 @@
+import { escapeHtml } from '../utils/escape.js';
+
 export function renderHistoryItem(entry) {
   const statusClass = entry.status;
   
@@ -25,7 +27,7 @@ export function renderHistoryItem(entry) {
       <div class="hist-top">
         <div class="hist-status-icon ${statusClass}">${icon}</div>
         <span class="hist-badge-text ${statusClass}">${explicitStatus}</span>
-        <span class="hist-name" title="${entry.filename}">${entry.filename}</span>
+        <span class="hist-name" title="${escapeHtml(entry.filename)}">${escapeHtml(entry.filename)}</span>
       </div>
       <div class="hist-bot">
         <span class="hist-time">${entry._time}</span>

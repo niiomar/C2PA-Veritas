@@ -3,6 +3,7 @@ import { renderSidebar }   from './components/sidebar.js';
 import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile, verifyBatch, exportHistoryCsv, fetchHistory } from './utils/api.js';
+import { escapeHtml, escapeHtmlKeepQuotes } from './utils/escape.js';
 
 // Mount Layout
 // Injects the sidebar and workspace components into the main #app container
@@ -275,15 +276,6 @@ async function runVerify() {
   applyHistoryFilters();
 }
 
-// Minimal HTML-escaping for values interpolated into innerHTML below.
-// (Scoped to the new batch-results view only — does not touch the
-// pre-existing rendering paths elsewhere in this file.)
-function _escapeHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, ch => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[ch]));
-}
-
 // Batch Verification Flow
 async function runBatchVerify() {
   const useTrustList = document.getElementById('use-trust-list').checked;
@@ -294,14 +286,14 @@ async function runBatchVerify() {
     const statusClass = r.status || 'NO_MANIFEST';
     const shaShort = r.file_sha256 ? r.file_sha256.slice(0, 12) : '--';
     return `
-      <div class="hist-item ${_escapeHtml(statusClass)}">
+      <div class="hist-item ${escapeHtml(statusClass)}">
         <div class="hist-top">
-          <span class="hist-badge-text ${_escapeHtml(statusClass)}">${_escapeHtml(statusClass.replace('_', ' '))}</span>
-          <span class="hist-name" title="${_escapeHtml(r.filename)}">${_escapeHtml(r.filename)}</span>
+          <span class="hist-badge-text ${escapeHtml(statusClass)}">${escapeHtml(statusClass.replace('_', ' '))}</span>
+          <span class="hist-name" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span>
         </div>
         <div class="hist-bot">
-          <span class="hist-time">${_escapeHtml(shaShort)}</span>
-          <span class="hist-meta">${_escapeHtml(r.processing_time_sec ?? 0)}s</span>
+          <span class="hist-time">${escapeHtml(shaShort)}</span>
+          <span class="hist-meta">${escapeHtml(r.processing_time_sec ?? 0)}s</span>
         </div>
       </div>`;
   }).join('');
@@ -450,9 +442,9 @@ function renderMetrics(d) {
      mcActions.innerHTML = `<span style="font-size:15px; font-weight:700; color:var(--text-hi);">0</span>`;
   } else {
      let listHTML = tl.map(a => {
-         const actionName = a.action.split('.').pop().toUpperCase();
-         const timeStr = a.timestamp ? formatDateTime(a.timestamp) : 'Unknown Date';
-         const softStr = a.software_agent ? (a.software_agent.length > 18 ? a.software_agent.slice(0, 18) + '…' : a.software_agent) : 'Unknown Software';
+         const actionName = escapeHtml(a.action.split('.').pop().toUpperCase());
+         const timeStr = escapeHtml(a.timestamp ? formatDateTime(a.timestamp) : 'Unknown Date');
+         const softStr = escapeHtml(a.software_agent ? (a.software_agent.length > 18 ? a.software_agent.slice(0, 18) + '…' : a.software_agent) : 'Unknown Software');
 
          return `
          <div style="font-size:10px; padding:6px 0; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:4px;">
@@ -460,7 +452,7 @@ function renderMetrics(d) {
                 <span style="color:var(--cyan); font-weight:700; font-family:var(--mono);">${actionName}</span>
                 <span style="color:var(--text-dim); font-size:8px; font-family:var(--mono);">${timeStr}</span>
             </div>
-            <span style="color:var(--text-mid); font-size:9px;" title="${a.software_agent}">▶ ${softStr}</span>
+            <span style="color:var(--text-mid); font-size:9px;" title="${escapeHtml(a.software_agent)}">▶ ${softStr}</span>
          </div>`;
      }).join('');
      mcActions.innerHTML = `<div class="mini-ledger" style="display:flex; flex-direction:column; max-height: 80px; overflow-y:auto; padding-right:4px;">${listHTML}</div>`;
@@ -498,7 +490,7 @@ function renderSequencePanel(d) {
   grid.innerHTML = `
     <div class="data-item">
       <span class="data-label">Sequence ID (Batch Hash)</span>
-      <span class="data-val" style="color:var(--cyan); text-transform:none;">${seq.batch_id || 'N/A'}</span>
+      <span class="data-val" style="color:var(--cyan); text-transform:none;">${escapeHtml(seq.batch_id || 'N/A')}</span>
     </div>
     <div class="data-item ${isOmitted ? 'val-notAllowed' : 'val-allowed'}">
       <span class="data-label">Asset Completeness</span>
@@ -529,11 +521,11 @@ function renderCertPanel(d) {
 
   card.innerHTML = `
     <div class="cert-grid">
-      <div class="cg-item"><span class="cg-label">Issuer</span><span class="cg-val" style="color:var(--blue)">${m.issuer || 'Unknown'}</span></div>
-      <div class="cg-item"><span class="cg-label">Subject</span><span class="cg-val">${m.issuer || 'Self-Signed'}</span></div>
-      <div class="cg-item"><span class="cg-label">Algorithm</span><span class="cg-val">${m.signing_algorithm || 'N/A'}</span></div>
+      <div class="cg-item"><span class="cg-label">Issuer</span><span class="cg-val" style="color:var(--blue)">${escapeHtml(m.issuer || 'Unknown')}</span></div>
+      <div class="cg-item"><span class="cg-label">Subject</span><span class="cg-val">${escapeHtml(m.issuer || 'Self-Signed')}</span></div>
+      <div class="cg-item"><span class="cg-label">Algorithm</span><span class="cg-val">${escapeHtml(m.signing_algorithm || 'N/A')}</span></div>
       <div class="cg-item"><span class="cg-label">Fingerprint</span><span class="cg-val">${fp}...</span></div>
-      <div class="cg-item" style="grid-column: span 2"><span class="cg-label">Serial Number</span><span class="cg-val" style="color:var(--text-dim)">${m.cert_serial || 'N/A'}</span></div>
+      <div class="cg-item" style="grid-column: span 2"><span class="cg-label">Serial Number</span><span class="cg-val" style="color:var(--text-dim)">${escapeHtml(m.cert_serial || 'N/A')}</span></div>
     </div>
   `;
   panel.classList.add('visible');
@@ -564,8 +556,8 @@ function renderTimeline(d) {
     <div class="pg-node origin" data-step="origin">
       <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg></div>
       <span class="pg-label">Origin</span>
-      <span class="pg-sub" style="color:var(--text-mid)">${formatSoft(tl[0]?.software_agent)}</span>
-      <span class="pg-sub" style="opacity:0.6">${formatDateTime(tl[0]?.timestamp)}</span>
+      <span class="pg-sub" style="color:var(--text-mid)">${escapeHtml(formatSoft(tl[0]?.software_agent))}</span>
+      <span class="pg-sub" style="opacity:0.6">${escapeHtml(formatDateTime(tl[0]?.timestamp))}</span>
     </div>
   `;
 
@@ -583,9 +575,9 @@ function renderTimeline(d) {
       nodesHTML += `
         <div class="pg-node edit" data-step="${stepId}">
           <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></div>
-          <span class="pg-label">${action.action.split('.').pop().toUpperCase()}</span>
-          <span class="pg-sub" style="color:var(--text-mid)">${formatSoft(action.software_agent)}</span>
-          <span class="pg-sub" style="opacity:0.6">${formatDateTime(action.timestamp)}</span>
+          <span class="pg-label">${escapeHtml(action.action.split('.').pop().toUpperCase())}</span>
+          <span class="pg-sub" style="color:var(--text-mid)">${escapeHtml(formatSoft(action.software_agent))}</span>
+          <span class="pg-sub" style="opacity:0.6">${escapeHtml(formatDateTime(action.timestamp))}</span>
         </div>
       `;
     }
@@ -603,7 +595,7 @@ function renderTimeline(d) {
       <div class="pg-node sign" data-step="sign">
         <div class="pg-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
         <span class="pg-label">Signed</span>
-        <span class="pg-sub" style="color:var(--text-mid)">${formatSoft(d.active_manifest?.issuer)}</span>
+        <span class="pg-sub" style="color:var(--text-mid)">${escapeHtml(formatSoft(d.active_manifest?.issuer))}</span>
         <span class="pg-sub" style="opacity:0.6">--</span>
       </div>
     `;
@@ -668,8 +660,8 @@ function renderAiPolicy(d) {
     const useLabel = use === 'notAllowed' ? 'RESTRICTED' : use.toUpperCase();
     return `
       <div class="data-item val-${useClass}">
-        <span class="data-label">${LABEL_MAP[key] || key.split('.').pop()}</span>
-        <span class="data-val">${useLabel}</span>
+        <span class="data-label">${escapeHtml(LABEL_MAP[key] || key.split('.').pop())}</span>
+        <span class="data-val">${escapeHtml(useLabel)}</span>
       </div>
     `;
   }).join('');
@@ -696,7 +688,12 @@ function renderRawJson(json) {
   const lines = strJson.split('\n');
   let html = '';
   lines.forEach((line, index) => {
-    let highlighted = line.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+    // Escape &, <, > before syntax-highlighting — the raw manifest is fully
+    // attacker-controlled (issuer names, titles, custom assertions, etc.),
+    // and this is rendered via innerHTML below. Quotes are left intact since
+    // the highlighter regex matches on literal " characters.
+    const safeLine = escapeHtmlKeepQuotes(line);
+    let highlighted = safeLine.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
       let cls = 'number';
       if (/^"/.test(match)) {
           if (/:$/.test(match)) { cls = 'key'; } 

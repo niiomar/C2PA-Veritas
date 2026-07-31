@@ -153,11 +153,6 @@ def extract_provenance(
     errors           = val_active.get("failure", [])
     successes        = val_active.get("success", [])
 
-    # Filter out the untrusted credential error for dev demos
-    # This prevents the system from downgrading the status to PARTIAL
-    # just because you are using a self-signed local certificate.
-    errors = [e for e in errors if e.get("code") != "signingCredentialUntrusted"]
-
     # Parse individual manifests
     parsed_manifests: list[ManifestSummary] = []
     for label, mdata in manifests_raw.items():
