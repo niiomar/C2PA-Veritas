@@ -51,6 +51,7 @@ class ManifestSummary:
     actions:            list[ActionEntry]
     ai_training_policy: dict | None
     ingredients:        list[str]
+    batch_info:         dict | None = None   # Veritas extension — not part of the C2PA spec
 
 @dataclass
 class ProvenanceReport:
@@ -126,7 +127,6 @@ def extract_provenance(
         manifest_json_str = reader.json()
         manifest_store    = json.loads(manifest_json_str)
         is_embedded       = reader.is_embedded()
-        
         remote_url        = reader.get_remote_url()
 
     except c2pa.C2paError as e:
@@ -208,10 +208,17 @@ def _parse_manifest(label: str, mdata: dict, is_active: bool) -> ManifestSummary
 
     actions: list[ActionEntry] = []
     ai_policy = None
+    batch_info = None
 
     for assertion in mdata.get("assertions", []):
         alab  = assertion.get("label", "")
         adata = assertion.get("data", {})
+
+        if alab == "veritas.batch":
+            batch_info = {
+                "batch_id":       adata.get("batch_id"),
+                "expected_count": adata.get("expected_count"),
+            }
 
         if "c2pa.actions" in alab:
             for act in adata.get("actions", []):
@@ -247,6 +254,7 @@ def _parse_manifest(label: str, mdata: dict, is_active: bool) -> ManifestSummary
         actions           = actions,
         ai_training_policy= ai_policy,
         ingredients       = ingredients,
+        batch_info        = batch_info,
     )
 
 

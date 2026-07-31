@@ -11,7 +11,9 @@ export function renderHistoryItem(entry) {
   };
 
   const icon = ICONS[statusClass] || ICONS.NO_MANIFEST;
-  const mCount = entry.manifests?.length || 0;
+  // Persisted (backend-loaded) entries carry manifest_count instead of a
+  // full manifests array, since the audit log only stores the summary.
+  const mCount = entry.manifests?.length ?? entry.manifest_count ?? 0;
   
   // Format Explicit Status String
   let explicitStatus = statusClass.replace('_', ' ');

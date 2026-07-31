@@ -25,7 +25,12 @@ C2PA is an open standard backed by Adobe, Microsoft, BBC, Sony, and OpenAI. Cont
 - **Stripped-manifest detection** — explicitly surfaces `NO_MANIFEST` as a forensic signal
 - **AI training policy extraction** — surfaces `c2pa.training-mining` assertions (notAllowed / allowed / constrained)
 - **Demo signing** — signs files with a dev certificate for create→verify round-trip testing
-- **Forensic audit log** — every check recorded in SQLite, keyed by file SHA-256
+- **Forensic audit log** — every check recorded in SQLite, keyed by file SHA-256, and **hash-chained** so post-hoc edits or deletions of past rows are detectable
+- **Batch verification** — verify up to 25 files in a single request via `/verify/batch`
+- **Sequence completeness (Veritas extension)** — an optional, non-standard `veritas.batch` assertion lets a set of related assets declare an expected count; verification cross-checks it against the audit log to flag missing (omitted) members. **Not part of the official C2PA spec.**
+- **Trust list support** — cache a PEM trust anchor bundle from an operator-configured URL or a manual upload, and opt individual verifications into using it
+- **CSV audit export** — download the full audit log via `/history/export.csv`
+- **Prometheus metrics** — request/verification counters at `/metrics`
 - **REST API** — `/verify`, `/sign`, `/history` endpoints with optional API key auth
 - **CLI tool** — `python scripts/demo_verify.py image.jpg` with no server required
 
@@ -53,12 +58,15 @@ C2PA-Veritas/
 │   ├── core/
 │   │   ├── extractor.py     # C2PA manifest extraction + validation engine
 │   │   ├── signer.py        # Dev certificate signing for round-trip testing
-│   │   └── audit.py         # SQLite forensic audit log
+│   │   ├── audit.py         # Hash-chained SQLite forensic audit log
+│   │   ├── trust.py         # Trust anchor list fetch/cache/upload
+│   │   └── metrics.py       # In-memory counters for /metrics
 │   ├── requirements.txt
 │   ├── .env.example
 │   ├── static/              # Vite build output (generated — not tracked in git)
 │   └── tests/
-│       └── test_extractor.py
+│       ├── test_extractor.py
+│       └── test_signer.py
 ├── frontend/
 │   ├── src/
 │   │   ├── app.js           # Entry point UI logic, verify/sign flows, history
@@ -180,7 +188,7 @@ All endpoints except `/health` require `X-API-KEY` header when `API_KEY` is set 
 ### `POST /api/v1/verify`
 Verify C2PA provenance of a media file.
 
-**Form fields:** `file` (required), `trust_anchors` (optional PEM string)
+**Form fields:** `file` (required), `trust_anchors` (optional PEM string), `use_trust_list` (optional bool — use the cached operator-configured trust list instead of the built-in one)
 
 **Response fields:**
 ```json
@@ -199,13 +207,36 @@ Verify C2PA provenance of a media file.
 ### `POST /api/v1/sign`
 Sign a media file with a dev C2PA certificate. Returns signed file as binary download.
 
-**Form fields:** `file`, `action`, `software_agent`, `no_ai_training`, `claim_generator`
+**Form fields:** `file`, `action`, `software_agent`, `no_ai_training`, `claim_generator`, `batch_id` (optional, Veritas extension), `batch_expected_count` (optional, Veritas extension)
 
-### `GET /api/v1/history?limit=50`
-Recent audit log entries.
+### `POST /api/v1/verify/batch`
+Verify up to 25 media files in a single request. Same form fields as `/verify`, but `files` (plural) accepts multiple uploads.
+
+**Response:** `{ "results": [{ "filename", ...ProvenanceReport }], "count": n }`
+
+### `GET /api/v1/history?limit=50&offset=0`
+Paginated audit log entries. **Response:** `{ "entries", "total", "limit", "offset" }`.
+
+### `GET /api/v1/history/export.csv`
+Downloads the full audit log as CSV.
 
 ### `GET /api/v1/history/{sha256}`
 All past checks for a specific file hash.
+
+### `GET /api/v1/audit/verify`
+Recomputes the audit log's hash chain and reports whether any row has been altered or deleted since it was written. Best-effort tamper *evidence* for a single SQLite file on one host, not a distributed-ledger-grade guarantee.
+
+### `GET /api/v1/trust-list`
+Trust anchor cache status: source, fetch time, anchor count, staleness.
+
+### `POST /api/v1/trust-list/refresh`
+Re-fetches the trust anchor bundle from the configured `TRUST_LIST_URL`. 400 if not configured.
+
+### `POST /api/v1/trust-list/upload`
+Caches a manually-uploaded PEM trust anchor bundle. **Form fields:** `file`.
+
+### `GET /metrics`
+Prometheus-format request/verification counters. Unauthenticated (aggregate counts only, matching `/health`).
 
 ### `GET /health`
 Liveness check.
@@ -221,6 +252,8 @@ Liveness check.
 | `API_KEY` | *(unset)* | Shared secret for `X-API-KEY` auth. Unauthenticated if unset. |
 | `CORS_ORIGINS` | `http://localhost:8000,http://127.0.0.1:8000` | Allowed frontend origins. |
 | `AUDIT_DB_PATH` | `audit_log.db` | SQLite audit log path. |
+| `TRUST_LIST_URL` | *(unset)* | Optional URL to a PEM trust anchor bundle. Only fetched via the authenticated `/trust-list/refresh` endpoint — never per-request. |
+| `TRUST_LIST_CACHE_PATH` | `trust_list_cache.pem` | Where the fetched/uploaded trust anchor bundle is cached on disk. |
 
 ### `frontend/.env`
 

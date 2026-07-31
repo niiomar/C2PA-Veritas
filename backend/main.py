@@ -1,26 +1,49 @@
 """
 C2PA-Veritas FastAPI Backend
 """
+import csv
 import dataclasses
+import io
 import json
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, Header, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, Header, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from core.audit import get_by_hash, get_recent, log_check, sha256_of_bytes
+from core.audit import count_all, count_batch_members, get_by_hash, get_recent, iter_all_rows, log_check, sha256_of_bytes, verify_chain
 from core.extractor import ProvenanceReport, extract_provenance
 from core.signer import sign_media
+from core import trust
+from core import metrics
 
 # Global Configuration & Environment
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+class _JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level":   record.levelname,
+            "logger":  record.name,
+            "message": record.getMessage(),
+        }
+        request_id = getattr(record, "request_id", None)
+        if request_id:
+            payload["request_id"] = request_id
+        return json.dumps(payload)
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_JsonLogFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[_handler])
 logger = logging.getLogger(__name__)
 
 VERSION = "1.0.0"
@@ -59,6 +82,31 @@ app.add_middleware(
     allow_headers     = ["Content-Type", "X-API-KEY"],
 )
 
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = uuid.uuid4().hex[:16]
+    start = time.time()
+    try:
+        response = await call_next(request)
+    except Exception:
+        metrics.incr("veritas_errors_total")
+        logger.error(
+            f"{request.method} {request.url.path} raised an exception",
+            extra={"request_id": request_id},
+        )
+        raise
+    duration_ms = round((time.time() - start) * 1000, 2)
+    if response.status_code >= 500:
+        metrics.incr("veritas_errors_total")
+    logger.info(
+        f"{request.method} {request.url.path} -> {response.status_code} ({duration_ms}ms)",
+        extra={"request_id": request_id},
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
 # Data Serialization
 # Converts the internal Python dataclass into a JSON-safe dictionary for the API response
 def _report_to_dict(report: ProvenanceReport) -> dict:
@@ -71,46 +119,103 @@ def _report_to_dict(report: ProvenanceReport) -> dict:
 async def health():
     return {"status": "ok", "version": VERSION}
 
-# API Routing: Core Forensic Verification
-@app.post("/api/v1/verify", dependencies=[Depends(verify_api_key)])
-async def verify(
-    file: UploadFile = File(...),
-    trust_anchors: str | None = Form(default=None, description="PEM-encoded trust anchors (optional)"),
-):
-    """
-    Ingests media, extracts cryptographic receipts, and verifies the C2PA provenance.
-    Returns a ProvenanceReport containing validation status, timelines, and raw JSON.
-    """
-    start = time.time()
-    ext   = Path(file.filename or "").suffix.lower()
 
+@app.get("/metrics")
+async def metrics_endpoint():
+    """
+    Prometheus-format counters. Left unauthenticated (matching /health) since
+    the exposed data is aggregate request counts only — nothing sensitive.
+    """
+    return PlainTextResponse(metrics.render_prometheus(), media_type="text/plain; version=0.0.4")
+
+
+def _check_uploaded(filename: str, content: bytes) -> None:
+    ext = Path(filename or "").suffix.lower()
     if ext not in SUPPORTED_EXTS:
         raise HTTPException(400, f"Unsupported file type. Supported: {', '.join(sorted(SUPPORTED_EXTS))}")
-
-    content = await file.read()
     if len(content) > 200 * 1024 * 1024:
         raise HTTPException(413, "File too large. Maximum is 200MB.")
 
-    # Generate exact bit-for-bit mathematical footprint of the file prior to analysis
-    sha = sha256_of_bytes(content)
-    logger.info(f"Verifying: {file.filename} ({len(content) // 1024}KB) sha256={sha[:16]}...")
 
-    # Execute the C2PA extraction engine
+def _verify_single(content: bytes, filename: str, trust_anchors: str | None, use_trust_list: bool) -> dict:
+    """
+    Shared verification core used by both /verify and /verify/batch: extracts
+    provenance, logs the audit entry, and attaches the Veritas batch
+    cross-check (sequence_invariants) when applicable.
+    """
+    start = time.time()
+    sha   = sha256_of_bytes(content)
+    logger.info(f"Verifying: {filename} ({len(content) // 1024}KB) sha256={sha[:16]}...")
+
+    if not trust_anchors and use_trust_list:
+        cached_pem, _ = trust.get_cached()
+        if cached_pem:
+            trust_anchors = cached_pem
+        else:
+            logger.warning("use_trust_list requested but no cached trust list is present; using built-in trust list.")
+
     report = extract_provenance(
         file_bytes         = content,
-        filename           = file.filename or "upload",
+        filename           = filename,
         file_sha256        = sha,
         trust_anchors_pem  = trust_anchors,
     )
 
     processing_sec = round(time.time() - start, 2)
-    
-    # Store results in the immutable session history ledger
-    log_check(content, file.filename or "upload", report, processing_sec)
+    batch_info = report.active_manifest.batch_info if report.active_manifest else None
+    batch_id = batch_info.get("batch_id") if batch_info else None
+    log_check(content, filename, report, processing_sec, batch_id=batch_id)
+    metrics.record_verify_status(report.status.value)
 
     result = _report_to_dict(report)
     result["processing_time_sec"] = processing_sec
+
+    # Veritas extension — cross-check the declared batch size against how many
+    # distinct files from this batch have been verified so far, per the audit log.
+    if batch_info and batch_info.get("batch_id") and batch_info.get("expected_count"):
+        result["sequence_invariants"] = {
+            "batch_id":            batch_info["batch_id"],
+            "expected_count":      batch_info["expected_count"],
+            "actual_count":        count_batch_members(batch_info["batch_id"]),
+            "is_veritas_extension": True,
+        }
+
     return result
+
+# API Routing: Core Forensic Verification
+@app.post("/api/v1/verify", dependencies=[Depends(verify_api_key)])
+async def verify(
+    file: UploadFile = File(...),
+    trust_anchors: str | None = Form(default=None, description="PEM-encoded trust anchors (optional)"),
+    use_trust_list: bool = Form(default=False, description="Use the cached operator-configured trust list, if any"),
+):
+    """
+    Ingests media, extracts cryptographic receipts, and verifies the C2PA provenance.
+    Returns a ProvenanceReport containing validation status, timelines, and raw JSON.
+    """
+    content = await file.read()
+    _check_uploaded(file.filename or "", content)
+    return _verify_single(content, file.filename or "upload", trust_anchors, use_trust_list)
+
+
+@app.post("/api/v1/verify/batch", dependencies=[Depends(verify_api_key)])
+async def verify_batch(
+    files: list[UploadFile] = File(...),
+    trust_anchors: str | None = Form(default=None),
+    use_trust_list: bool = Form(default=False),
+):
+    """Verify up to 25 media files in a single request."""
+    if len(files) > 25:
+        raise HTTPException(400, "Batch too large. Maximum is 25 files per request.")
+
+    results = []
+    for f in files:
+        content = await f.read()
+        _check_uploaded(f.filename or "", content)
+        report = _verify_single(content, f.filename or "upload", trust_anchors, use_trust_list)
+        results.append({"filename": f.filename or "upload", **report})
+
+    return {"results": results, "count": len(results)}
 
 # API Routing: Cryptographic Signing
 @app.post("/api/v1/sign", dependencies=[Depends(verify_api_key)])
@@ -121,6 +226,8 @@ async def sign(
     digital_source:  str        = Form(default="http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"),
     no_ai_training:  bool       = Form(default=True),
     claim_generator: str        = Form(default="C2PA-Veritas/1.0"),
+    batch_id:              str | None = Form(default=None),
+    batch_expected_count:  int | None = Form(default=None),
 ):
     """
     Injects a C2PA manifest and signs the media using a local development certificate.
@@ -132,6 +239,7 @@ async def sign(
 
     content = await file.read()
     logger.info(f"Signing: {file.filename}")
+    metrics.incr("veritas_sign_total")
 
     try:
         # Construct and inject the cryptographic manifest
@@ -143,7 +251,9 @@ async def sign(
             software_agent  = software_agent,
             digital_source  = digital_source,
             no_ai_training  = no_ai_training,
-            timestamp_url   = None, # TSA bypassed for localized internal testing
+            timestamp_url   = None, # Bypasses the TSA entirely for local testing
+            batch_id              = batch_id,
+            batch_expected_count  = batch_expected_count,
         )
     except Exception as e:
         logger.exception("Signing failed")
@@ -161,8 +271,33 @@ async def sign(
 
 # API Routing: Audit History
 @app.get("/api/v1/history", dependencies=[Depends(verify_api_key)])
-async def history(limit: int = Query(default=50, le=200)):
-    return {"entries": get_recent(limit)}
+async def history(limit: int = Query(default=50, le=200), offset: int = Query(default=0, ge=0)):
+    return {
+        "entries": get_recent(limit, offset),
+        "total":   count_all(),
+        "limit":   limit,
+        "offset":  offset,
+    }
+
+
+@app.get("/api/v1/history/export.csv", dependencies=[Depends(verify_api_key)])
+async def history_export_csv():
+    rows = iter_all_rows()
+    buf = io.StringIO()
+    fieldnames = [
+        "id", "timestamp", "file_sha256", "filename", "media_type", "status",
+        "validation_state", "issuer", "manifest_count", "action_count",
+        "processing_sec", "batch_id", "prev_hash", "row_hash",
+    ]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+
+    return Response(
+        content    = buf.getvalue(),
+        media_type = "text/csv",
+        headers    = {"Content-Disposition": 'attachment; filename="audit_log.csv"'},
+    )
 
 @app.get("/api/v1/history/{file_hash}", dependencies=[Depends(verify_api_key)])
 async def history_by_hash(file_hash: str):
@@ -170,6 +305,42 @@ async def history_by_hash(file_hash: str):
     if not entries:
         raise HTTPException(404, "No records for this file hash.")
     return {"entries": entries}
+
+
+@app.get("/api/v1/trust-list", dependencies=[Depends(verify_api_key)])
+async def trust_list_status():
+    return trust.status()
+
+
+@app.post("/api/v1/trust-list/refresh", dependencies=[Depends(verify_api_key)])
+async def trust_list_refresh():
+    try:
+        return trust.fetch_and_cache()
+    except trust.TrustListError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/v1/trust-list/upload", dependencies=[Depends(verify_api_key)])
+async def trust_list_upload(file: UploadFile = File(...)):
+    content = await file.read()
+    try:
+        return trust.save_uploaded(content, source_label=f"upload:{file.filename}")
+    except trust.TrustListError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/v1/audit/verify", dependencies=[Depends(verify_api_key)])
+async def audit_verify():
+    """
+    Recompute the audit log's hash chain and report whether any row has been
+    altered or deleted after being written.
+
+    NOTE: this is best-effort tamper *evidence* for a single SQLite file on
+    one host, not a distributed-ledger-grade guarantee — an operator with
+    full filesystem access could still rewrite the entire chain consistently.
+    """
+    return verify_chain()
+
 
 # Static File Serving
 # Points the FastAPI backend to the compiled Vite frontend directory

@@ -4,10 +4,11 @@ function authHeaders() {
   return API_KEY ? { 'X-API-KEY': API_KEY } : {};
 }
 
-export async function verifyFile(file, trustAnchorsPem = null) {
+export async function verifyFile(file, trustAnchorsPem = null, useTrustList = false) {
   const fd = new FormData();
   fd.append('file', file);
   if (trustAnchorsPem) fd.append('trust_anchors', trustAnchorsPem);
+  if (useTrustList) fd.append('use_trust_list', 'true');
 
   const res = await fetch('/api/v1/verify', {
     method: 'POST', body: fd, headers: authHeaders(),
@@ -30,6 +31,8 @@ export async function signFile(file, opts = {}) {
   fd.append('no_ai_training',  opts.noAiTraining !== false ? 'true' : 'false');
   if (opts.softwareAgent) fd.append('software_agent', opts.softwareAgent);
   if (opts.digitalSource) fd.append('digital_source', opts.digitalSource);
+  if (opts.batchId) fd.append('batch_id', opts.batchId);
+  if (opts.batchExpectedCount) fd.append('batch_expected_count', opts.batchExpectedCount);
 
   const res = await fetch('/api/v1/sign', {
     method: 'POST', body: fd, headers: authHeaders(),
@@ -48,8 +51,31 @@ export async function signFile(file, opts = {}) {
   return { blob, filename: match ? match[1] : 'signed_file' };
 }
 
-export async function fetchHistory(limit = 50) {
-  const res = await fetch(`/api/v1/history?limit=${limit}`, { headers: authHeaders() });
-  if (!res.ok) return { entries: [] };
+export async function fetchHistory(limit = 50, offset = 0) {
+  const res = await fetch(`/api/v1/history?limit=${limit}&offset=${offset}`, { headers: authHeaders() });
+  if (!res.ok) return { entries: [], total: 0, limit, offset };
   return res.json();
+}
+
+export async function verifyBatch(files, useTrustList = false) {
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  if (useTrustList) fd.append('use_trust_list', 'true');
+
+  const res = await fetch('/api/v1/verify/batch', {
+    method: 'POST', body: fd, headers: authHeaders(),
+  });
+
+  if (res.status === 401) throw new Error('Unauthorized — check API key configuration.');
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.detail || 'Batch verification failed.');
+  }
+  return res.json();
+}
+
+export async function exportHistoryCsv() {
+  const res = await fetch('/api/v1/history/export.csv', { headers: authHeaders() });
+  if (!res.ok) throw new Error('Export failed.');
+  return res.blob();
 }

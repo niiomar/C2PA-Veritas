@@ -2,7 +2,7 @@ import './styles.css';
 import { renderSidebar }   from './components/sidebar.js';
 import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
-import { verifyFile, signFile } from './utils/api.js';
+import { verifyFile, signFile, verifyBatch, exportHistoryCsv, fetchHistory } from './utils/api.js';
 
 // Mount Layout
 // Injects the sidebar and workspace components into the main #app container
@@ -15,6 +15,7 @@ document.getElementById('app').innerHTML = `
 
 // Application State
 let currentFile    = null;      // Holds the currently uploaded File object
+let currentFiles   = [];        // Holds the currently uploaded File objects in batch mode
 let currentMode    = 'verify';  // Tracks active mode: 'verify' or 'sign'
 let sessionHistory = [];        // Stores all scans run during this session
 let signedBlob     = null;      // Holds the output file after signing
@@ -24,6 +25,11 @@ let loadingInterval= null;      // Controls the UI loading text animation
 // Filter Engine State
 let activeFilter = 'ALL';       // Tracks the active history filter (ALL, VALID, INVALID)
 let searchQuery = '';           // Tracks current text in the history search bar
+
+// Persisted History Pagination State
+const HISTORY_PAGE_SIZE = 50;
+let historyOffset = 0;
+let historyTotal  = 0;
 
 // Cache for the source media viewer to prevent memory leaks
 let objectUrlCache = null;
@@ -38,6 +44,7 @@ const signOpts   = document.getElementById('sign-options');
 
 const previewImg   = document.getElementById('preview-img');
 const videoPreview = document.getElementById('video-preview');
+const batchModeChk = document.getElementById('batch-mode');
 
 // Strict Forensic Date Formatter
 // Forces all timestamps into a standard, readable chronological format
@@ -67,6 +74,35 @@ function applyHistoryFilters() {
   updateHistory(filtered, sessionHistory);
 }
 
+// Loads a page of persisted audit-log history from the backend and appends
+// it to the in-memory session history (which otherwise starts empty on
+// every page refresh).
+async function loadPersistedHistory(offset = 0) {
+  try {
+    const data = await fetchHistory(HISTORY_PAGE_SIZE, offset);
+    const mapped = (data.entries || []).map((e, i) => ({
+      ...e,
+      _idx:       sessionHistory.length + i,
+      _time:      e.timestamp ? formatDateTime(new Date(e.timestamp * 1000).toISOString()) : '--',
+      _persisted: true, // summary-only row from the audit log — no full report to reload
+    }));
+    sessionHistory.push(...mapped);
+    historyOffset = offset + (data.entries || []).length;
+    historyTotal  = data.total || 0;
+    applyHistoryFilters();
+    updateLoadMoreVisibility();
+  } catch (err) {
+    console.warn('Failed to load persisted history:', err);
+  }
+}
+
+function updateLoadMoreVisibility() {
+  const btn = document.getElementById('load-more-btn');
+  btn.style.display = historyOffset < historyTotal ? 'block' : 'none';
+}
+
+document.getElementById('load-more-btn').addEventListener('click', () => loadPersistedHistory(historyOffset));
+
 // Search bar listener
 document.getElementById('history-search').addEventListener('input', (e) => {
     searchQuery = e.target.value;
@@ -83,9 +119,22 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
     });
 });
 
+// Batch mode toggle — switches the file input between single and multi-select
+batchModeChk.addEventListener('change', () => {
+  fileInput.multiple = batchModeChk.checked;
+  currentFile  = null;
+  currentFiles = [];
+  resetResults();
+  actionBtn.disabled    = true;
+  actionBtn.textContent = 'AWAITING EVIDENCE';
+});
+
 // File Ingestion Listeners
 dropZone.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+fileInput.addEventListener('change', e => {
+  if (batchModeChk.checked) handleFiles(e.target.files);
+  else handleFile(e.target.files[0]);
+});
 
 // Drag and drop UX handling
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -93,8 +142,21 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
-  handleFile(e.dataTransfer.files[0]);
+  if (batchModeChk.checked) handleFiles(e.dataTransfer.files);
+  else handleFile(e.dataTransfer.files[0]);
 });
+
+// Processes a set of files for batch verification
+function handleFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (files.length === 0) return;
+  currentFile  = null;
+  currentFiles = files;
+
+  resetResults();
+  actionBtn.disabled    = false;
+  actionBtn.textContent = `VERIFY BATCH: ${files.length} file${files.length === 1 ? '' : 's'}`;
+}
 
 // Processes the raw file, sets up the media preview, and resets UI state
 function handleFile(file) {
@@ -146,12 +208,19 @@ function handleFile(file) {
 
 // Main Execution Pipeline
 actionBtn.addEventListener('click', async () => {
-  if (!currentFile) return;
+  const batchMode = batchModeChk.checked;
+  if (batchMode) {
+    if (currentFiles.length === 0) return;
+  } else if (!currentFile) {
+    return;
+  }
   setLoading(true);
   resetResults();
 
   try {
-    if (currentMode === 'verify') {
+    if (batchMode) {
+      await runBatchVerify();
+    } else if (currentMode === 'verify') {
       await runVerify();
     } else {
       await runSign();
@@ -176,8 +245,9 @@ actionBtn.addEventListener('click', async () => {
 
 // 1. Verification Flow
 async function runVerify() {
-  const data = await verifyFile(currentFile);
-  
+  const useTrustList = document.getElementById('use-trust-list').checked;
+  const data = await verifyFile(currentFile, null, useTrustList);
+
   if (data._rateLimited) {
     document.getElementById('warn-sys-text').textContent = 'Rate limit reached — please wait before retrying.';
     document.getElementById('warn-sys-error').classList.add('visible');
@@ -205,6 +275,47 @@ async function runVerify() {
   applyHistoryFilters();
 }
 
+// Minimal HTML-escaping for values interpolated into innerHTML below.
+// (Scoped to the new batch-results view only — does not touch the
+// pre-existing rendering paths elsewhere in this file.)
+function _escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+// Batch Verification Flow
+async function runBatchVerify() {
+  const useTrustList = document.getElementById('use-trust-list').checked;
+  const data = await verifyBatch(currentFiles, useTrustList);
+
+  const listEl = document.getElementById('batch-results-list');
+  listEl.innerHTML = data.results.map(r => {
+    const statusClass = r.status || 'NO_MANIFEST';
+    const shaShort = r.file_sha256 ? r.file_sha256.slice(0, 12) : '--';
+    return `
+      <div class="hist-item ${_escapeHtml(statusClass)}">
+        <div class="hist-top">
+          <span class="hist-badge-text ${_escapeHtml(statusClass)}">${_escapeHtml(statusClass.replace('_', ' '))}</span>
+          <span class="hist-name" title="${_escapeHtml(r.filename)}">${_escapeHtml(r.filename)}</span>
+        </div>
+        <div class="hist-bot">
+          <span class="hist-time">${_escapeHtml(shaShort)}</span>
+          <span class="hist-meta">${_escapeHtml(r.processing_time_sec ?? 0)}s</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('idle-state').style.display = 'none';
+  document.getElementById('result-state').classList.add('visible');
+  document.getElementById('batch-results-panel').classList.add('visible');
+
+  data.results.forEach(r => {
+    sessionHistory.unshift({ ...r, _idx: sessionHistory.length, _time: formatDateTime(new Date().toISOString()) });
+  });
+  applyHistoryFilters();
+}
+
 // 2. Signing Flow
 async function runSign() {
   const opts = {
@@ -212,6 +323,8 @@ async function runSign() {
     softwareAgent:   document.getElementById('sign-agent').value.trim() || null,
     noAiTraining:    document.getElementById('sign-no-ai').checked,
     claimGenerator:  'C2PA-Veritas/2.0',
+    batchId:             document.getElementById('sign-batch-id').value.trim() || null,
+    batchExpectedCount:  parseInt(document.getElementById('sign-batch-expected').value, 10) || null,
   };
 
   const result = await signFile(currentFile, opts);
@@ -392,8 +505,8 @@ function renderSequencePanel(d) {
       <span class="data-val">${seq.actual_count} / ${seq.expected_count} Present</span>
     </div>
     <div class="data-item ${isOmitted ? 'val-notAllowed' : 'val-allowed'}">
-      <span class="data-label">Merkle Root Status</span>
-      <span class="data-val">${isOmitted ? 'MISMATCH' : 'VERIFIED'}</span>
+      <span class="data-label">Audit Log Cross-Check</span>
+      <span class="data-val">${isOmitted ? 'INCOMPLETE' : 'COMPLETE'}</span>
     </div>
   `;
 
@@ -636,8 +749,10 @@ document.getElementById('history-list').addEventListener('click', e => {
   if (!item) return;
   const idx   = parseInt(item.dataset.idx);
   const entry = sessionHistory.find(h => h._idx === idx);
-  if (!entry || entry.status === 'SIGNED') return;
-  
+  // Persisted (backend-loaded) rows only carry audit-log summary fields, not
+  // the full report needed to redraw the detail panels — same as SIGNED rows.
+  if (!entry || entry.status === 'SIGNED' || entry._persisted) return;
+
   // Conditionally restore the media preview window
   if (entry.filename && currentFile && currentFile.name === entry.filename) {
      const isVid = entry.media_type && entry.media_type.startsWith('video');
@@ -657,7 +772,20 @@ document.getElementById('history-list').addEventListener('click', e => {
   showResults();
 });
 
-// Wipes history completely 
+// Downloads the persisted audit log as CSV
+document.getElementById('export-csv-btn').addEventListener('click', async () => {
+  try {
+    const blob = await exportHistoryCsv();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'audit_log.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (err) {
+    console.error('CSV export failed:', err);
+  }
+});
+
+// Wipes history completely
 document.getElementById('clear-hist-btn').addEventListener('click', () => {
   sessionHistory = [];
   applyHistoryFilters();
@@ -690,7 +818,7 @@ function resetResults() {
     if (el) el.classList.remove('visible');
   });
   
-  ['cert-panel', 'timeline-panel', 'sequence-panel', 'ai-policy-panel', 'download-bar'].forEach(id => {
+  ['cert-panel', 'timeline-panel', 'sequence-panel', 'ai-policy-panel', 'download-bar', 'batch-results-panel'].forEach(id => {
     document.getElementById(id).classList.remove('visible');
   });
   
@@ -714,8 +842,12 @@ function setLoading(on) {
   actionBtn.disabled = on;
   if (!on) {
     clearInterval(loadingInterval);
-    const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
-    actionBtn.textContent = `${label}: ${currentFile.name.length > 20 ? currentFile.name.slice(0,18)+'…' : currentFile.name}`;
+    if (batchModeChk.checked) {
+      actionBtn.textContent = `VERIFY BATCH: ${currentFiles.length} file${currentFiles.length === 1 ? '' : 's'}`;
+    } else if (currentFile) {
+      const label = currentMode === 'verify' ? 'RUN VERIFICATION' : 'APPLY SIGNATURE';
+      actionBtn.textContent = `${label}: ${currentFile.name.length > 20 ? currentFile.name.slice(0,18)+'…' : currentFile.name}`;
+    }
     return;
   }
   
@@ -728,5 +860,5 @@ function setLoading(on) {
   }, 400);
 }
 
-// Initialize empty history view on page load
-applyHistoryFilters();
+// Initialize history view on page load, seeded from the persisted audit log
+loadPersistedHistory(0);

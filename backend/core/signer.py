@@ -29,6 +29,8 @@ def sign_media(
     cert_pem:      bytes | None = None,
     key_pem:       bytes | None = None,
     timestamp_url: str | None = None,
+    batch_id:              str | None = None,
+    batch_expected_count:  int | None = None,
 ) -> bytes:
     """Embed a C2PA manifest into a copy of the given media file."""
     ext       = Path(filename).suffix.lower().lstrip(".")
@@ -64,6 +66,19 @@ def sign_media(
                     "c2pa.ai_training":             {"use": "notAllowed"},
                     "c2pa.data_mining":             {"use": "notAllowed"},
                 }
+            }
+        })
+
+    # Veritas extension — NOT part of the C2PA spec. Lets a set of related
+    # assets declare how many siblings should exist, so a verifier can later
+    # cross-check the audit log for missing (omitted) members of the batch.
+    if batch_id and batch_expected_count:
+        assertions.append({
+            "label": "veritas.batch",
+            "data": {
+                "batch_id":         batch_id,
+                "expected_count":   batch_expected_count,
+                "veritas_extension": True,
             }
         })
 
@@ -111,17 +126,17 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
     if _DEV_CERT_PEM and _DEV_KEY_PEM:
         return _DEV_CERT_PEM, _DEV_KEY_PEM
 
-    now = datetime.datetime.utcnow()
-    
-    # 1. Root CA 
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    # 1. Root CA
     root_key = ec.generate_private_key(ec.SECP256R1())
     root_name = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Root CA"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
     ])
-    
+
     root_ski = x509.SubjectKeyIdentifier.from_public_key(root_key.public_key())
-    
+
     root_cert = (
         x509.CertificateBuilder()
         .subject_name(root_name)
@@ -148,12 +163,11 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
         x509.NameAttribute(NameOID.COMMON_NAME, "C2PA-Veritas Dev Signer"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, "C2PA-Veritas"),
     ])
-    
+
     leaf_ski = x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key())
-    
     # Pass the root_ski object directly instead of .digest
     leaf_aki = x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(root_ski)
-    
+
     leaf_cert = (
         x509.CertificateBuilder()
         .subject_name(leaf_name)
@@ -196,19 +210,19 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
 
 def _make_sign_fn(key_pem: bytes):
     from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-    
+
     key = serialization.load_pem_private_key(key_pem, password=None)
-    
+
     def sign(data: bytes) -> bytes:
         # 1. Create standard ASN.1 DER signature
         der_sig = key.sign(data, ec.ECDSA(hashes.SHA256()))
-        
+
         # 2. Extract R and S from the DER formatting
         r, s = decode_dss_signature(der_sig)
-        
+
         # 3. Concatenate R and S into strict 64-byte IEEE P1363 format required by C2PA
         return r.to_bytes(32, 'big') + s.to_bytes(32, 'big')
-        
+
     return sign
 
 def _ext_to_mime(ext: str) -> str:

@@ -47,6 +47,16 @@ export function renderSidebar() {
         <button class="mode-btn" id="mode-sign" data-mode="sign">Sign</button>
       </div>
 
+      <div class="toggle-row" id="trust-list-toggle-row">
+        <label class="toggle"><input type="checkbox" id="use-trust-list"><span class="toggle-slider"></span></label>
+        <span>Use cached trust list</span>
+      </div>
+
+      <div class="toggle-row" id="batch-mode-toggle-row">
+        <label class="toggle"><input type="checkbox" id="batch-mode"><span class="toggle-slider"></span></label>
+        <span>Batch mode (multi-file)</span>
+      </div>
+
       <div id="sign-options">
         <div class="field-group">
           <label>C2PA Action</label>
@@ -65,6 +75,14 @@ export function renderSidebar() {
           <label class="toggle"><input type="checkbox" id="sign-no-ai" checked><span class="toggle-slider"></span></label>
           <span>Embed "Do Not Train"</span>
         </div>
+        <div class="field-group">
+          <label>Batch ID <span style="opacity:0.6;font-weight:400;">(Veritas ext., optional)</span></label>
+          <input type="text" id="sign-batch-id" placeholder="e.g. shoot-2026-07-30-01">
+        </div>
+        <div class="field-group">
+          <label>Batch Expected Count</label>
+          <input type="number" id="sign-batch-expected" min="1" placeholder="e.g. 12">
+        </div>
       </div>
 
       <button id="action-btn" class="action-btn" disabled>AWAITING EVIDENCE</button>
@@ -74,7 +92,10 @@ export function renderSidebar() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
           SESSION LOG
         </div>
-        <button class="clear-btn" id="clear-hist-btn">CLEAR</button>
+        <div style="display:flex; gap:6px;">
+          <button class="clear-btn" id="export-csv-btn">EXPORT CSV</button>
+          <button class="clear-btn" id="clear-hist-btn">CLEAR</button>
+        </div>
       </div>
       
       <!-- PHASE 3: Search & Filter Controls -->
@@ -88,6 +109,7 @@ export function renderSidebar() {
       </div>
       
       <div class="history-list" id="history-list"></div>
+      <button class="clear-btn" id="load-more-btn" style="display:none; width:100%; margin-top:8px;">LOAD MORE</button>
     </aside>
   `;
 }

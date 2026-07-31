@@ -9,6 +9,11 @@ export function renderWorkspace() {
         <p>AWAITING PROVENANCE TELEMETRY</p>
       </div>
 
+      <div id="batch-results-panel" class="panel">
+        <div class="panel-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg> Batch Verification Results</div>
+        <div id="batch-results-list"></div>
+      </div>
+
       <div id="result-state">
 
         <!-- Warning banners -->
@@ -110,7 +115,7 @@ export function renderWorkspace() {
 
         <!-- NEW: Sequence Completeness Panel -->
         <div id="sequence-panel" class="panel">
-          <div class="panel-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> Sequence Completeness Invariants</div>
+          <div class="panel-header"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg> Sequence Completeness Invariants <span style="font-size:9px; font-weight:400; opacity:0.6; text-transform:none;">— Veritas Extension, non-standard (not part of the C2PA spec)</span></div>
           <div class="data-grid" id="sequence-grid"></div>
         </div>
 

@@ -6,6 +6,9 @@ backend/.env
 frontend/.env
 backend/static/
 backend/audit_log.db
+backend/*.db
 backend/data/
+backend/trust_list_cache.pem
+backend/trust_list_cache.pem.meta.json
 node_modules/
 frontend/dist/
