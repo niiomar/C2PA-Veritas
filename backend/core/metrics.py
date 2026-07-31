@@ -26,10 +26,12 @@ _HELP = {
 
 
 def incr(name: str, amount: int = 1) -> None:
+    """Increment a named counter, creating it at 0 first if unseen."""
     _counters[name] = _counters.get(name, 0) + amount
 
 
 def record_verify_status(status_value: str) -> None:
+    """Bump the running total plus the per-status counter (e.g. veritas_verify_valid)."""
     incr("veritas_verify_total")
     key = f"veritas_verify_{status_value.lower()}"
     if key in _counters:
@@ -37,6 +39,7 @@ def record_verify_status(status_value: str) -> None:
 
 
 def render_prometheus() -> str:
+    """Render all counters as Prometheus text-exposition format (HELP/TYPE/value per metric)."""
     lines = []
     for name, value in _counters.items():
         lines.append(f"# HELP {name} {_HELP.get(name, '')}")

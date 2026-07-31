@@ -1,3 +1,6 @@
+// Sidebar markup: telemetry stats, evidence drop zone, verify/sign controls,
+// and the session history list. Static template — app.js wires up all
+// behavior after mounting it into the DOM.
 export function renderSidebar() {
   return `
     <aside class="sidebar">

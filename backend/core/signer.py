@@ -92,7 +92,8 @@ def sign_media(
     source_stream = io.BytesIO(file_bytes)
     dest_stream   = io.BytesIO()
 
-    # fallback for c2pa-python versions
+    # c2pa-python >= 0.6 exposes Signer.from_callback(); older versions only
+    # have the module-level create_signer() function — support both.
     if hasattr(c2pa, "Signer"):
         alg = getattr(c2pa, "C2paSigningAlg", getattr(c2pa, "SigningAlg", None))
         with c2pa.Signer.from_callback(
@@ -209,6 +210,7 @@ def _get_dev_credentials() -> tuple[bytes, bytes]:
     return _DEV_CERT_PEM, _DEV_KEY_PEM
 
 def _make_sign_fn(key_pem: bytes):
+    """Build the raw-bytes-in, raw-signature-out callback the c2pa SDK signer expects."""
     from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
     key = serialization.load_pem_private_key(key_pem, password=None)

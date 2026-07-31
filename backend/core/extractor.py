@@ -197,6 +197,7 @@ def extract_provenance(
 
 # Helpers
 def _parse_manifest(label: str, mdata: dict, is_active: bool) -> ManifestSummary:
+    """Turn one raw manifest dict from the manifest store into a ManifestSummary."""
     sig     = mdata.get("signature_info", {})
     gen     = mdata.get("claim_generator_info", [{}])
     gen_str = gen[0].get("name", "") if gen else mdata.get("claim_generator", "Unknown")
@@ -290,6 +291,7 @@ def _build_signal(
     timeline: list[ActionEntry],
     errors:   list[dict],
 ) -> str:
+    """Build the human-readable one-line verdict shown in the UI's summary panel."""
     if status == ProvenanceStatus.NO_MANIFEST:
         return ("No C2PA provenance data found. This file has no embedded Content Credentials. "
                 "This is expected for media created before C2PA adoption but is a red flag "

@@ -1,3 +1,6 @@
+// Main panel markup: idle state, batch results list, and every result panel
+// (verdict, certificate, timeline, AI policy, sequence completeness, raw
+// JSON). Static template — app.js's render* functions fill it in per scan.
 export function renderWorkspace() {
   return `
     <main class="main-view" id="main-view">

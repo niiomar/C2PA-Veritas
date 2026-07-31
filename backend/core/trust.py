@@ -29,10 +29,12 @@ class TrustListError(Exception):
 
 
 def _anchor_count(pem_text: str) -> int:
+    """Count how many certificates a PEM bundle contains."""
     return pem_text.count(_PEM_MARKER)
 
 
 def _write_cache(pem_text: str, source: str) -> dict:
+    """Persist the PEM bundle plus a JSON metadata sidecar (source, timestamp, anchor count)."""
     TRUST_LIST_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     TRUST_LIST_CACHE_PATH.write_text(pem_text, encoding="utf-8")
     meta = {
@@ -90,10 +92,12 @@ def get_cached() -> tuple[str | None, dict | None]:
 
 
 def is_stale(meta: dict, ttl_hours: float = 24) -> bool:
+    """Whether the cached bundle was fetched more than `ttl_hours` ago."""
     return (time.time() - meta.get("fetched_at", 0)) > (ttl_hours * 3600)
 
 
 def status() -> dict:
+    """Cache metadata for the GET /api/v1/trust-list endpoint."""
     _, meta = get_cached()
     return {
         "configured_url_present": bool(TRUST_LIST_URL),

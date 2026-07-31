@@ -40,6 +40,8 @@ export function renderHistoryItem(entry) {
   `;
 }
 
+// Re-renders the sidebar history list from the filtered view, and the
+// telemetry stat boxes from the full (unfiltered) session history.
 export function updateHistory(filteredHistory, fullHistory = []) {
   const list   = document.getElementById('history-list');
   const total  = document.getElementById('stat-total');

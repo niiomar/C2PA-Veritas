@@ -1,9 +1,13 @@
+// Thin fetch wrappers around the backend's /api/v1 endpoints. VITE_API_KEY is
+// baked into the JS bundle at build time — not a secret, just a shared token
+// the backend can turn on optionally (see README's Security notes).
 const API_KEY = import.meta.env.VITE_API_KEY || '';
 
 function authHeaders() {
   return API_KEY ? { 'X-API-KEY': API_KEY } : {};
 }
 
+// Verify a single file's C2PA provenance.
 export async function verifyFile(file, trustAnchorsPem = null, useTrustList = false) {
   const fd = new FormData();
   fd.append('file', file);
@@ -23,6 +27,7 @@ export async function verifyFile(file, trustAnchorsPem = null, useTrustList = fa
   return res.json();
 }
 
+// Sign a file with the backend's dev certificate; returns the signed file as a blob.
 export async function signFile(file, opts = {}) {
   const fd = new FormData();
   fd.append('file', file);
@@ -51,12 +56,14 @@ export async function signFile(file, opts = {}) {
   return { blob, filename: match ? match[1] : 'signed_file' };
 }
 
+// One page of the persisted audit log.
 export async function fetchHistory(limit = 50, offset = 0) {
   const res = await fetch(`/api/v1/history?limit=${limit}&offset=${offset}`, { headers: authHeaders() });
   if (!res.ok) return { entries: [], total: 0, limit, offset };
   return res.json();
 }
 
+// Verify up to 25 files in one request; returns one report per file.
 export async function verifyBatch(files, useTrustList = false) {
   const fd = new FormData();
   for (const f of files) fd.append('files', f);
@@ -74,6 +81,7 @@ export async function verifyBatch(files, useTrustList = false) {
   return res.json();
 }
 
+// Download the full audit log as a CSV blob.
 export async function exportHistoryCsv() {
   const res = await fetch('/api/v1/history/export.csv', { headers: authHeaders() });
   if (!res.ok) throw new Error('Export failed.');

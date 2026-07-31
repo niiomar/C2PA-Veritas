@@ -97,6 +97,7 @@ async function loadPersistedHistory(offset = 0) {
   }
 }
 
+// Shows the "Load more" button only while more persisted history remains.
 function updateLoadMoreVisibility() {
   const btn = document.getElementById('load-more-btn');
   btn.style.display = historyOffset < historyTotal ? 'block' : 'none';

@@ -34,6 +34,7 @@ _COLUMNS = [
 ]
 
 def _init_db():
+    """Create the table if missing, then add any new columns (safe to run against an existing DB)."""
     with _connect() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS provenance_log (
@@ -62,10 +63,12 @@ def sha256_of_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 def _row_hash(prev_hash: str, fields: tuple) -> str:
+    """sha256(prev_hash + '|' + joined field values) — the per-row link in the chain."""
     payload = prev_hash + "|" + "|".join("" if f is None else str(f) for f in fields)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 def log_check(file_bytes: bytes, filename: str, report, processing_sec: float, batch_id: str | None = None) -> str | None:
+    """Record one provenance check, chaining it to the previous row's hash. Returns the file's SHA-256, or None on failure."""
     try:
         sha = sha256_of_bytes(file_bytes)
         issuer = report.active_manifest.issuer if report.active_manifest else None
@@ -99,6 +102,7 @@ def log_check(file_bytes: bytes, filename: str, report, processing_sec: float, b
         return None
 
 def get_recent(limit: int = 50, offset: int = 0) -> list[dict]:
+    """A page of audit log rows, most recent first."""
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -107,10 +111,12 @@ def get_recent(limit: int = 50, offset: int = 0) -> list[dict]:
         return [dict(r) for r in rows]
 
 def count_all() -> int:
+    """Total row count, used to drive /history pagination."""
     with _connect() as conn:
         return conn.execute("SELECT COUNT(*) FROM provenance_log").fetchone()[0]
 
 def get_by_hash(file_hash: str) -> list[dict]:
+    """Every past check recorded for a given file's SHA-256."""
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -119,12 +125,14 @@ def get_by_hash(file_hash: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 def count_batch_members(batch_id: str) -> int:
+    """How many distinct files tagged with this Veritas batch_id have been verified so far."""
     with _connect() as conn:
         return conn.execute(
             "SELECT COUNT(DISTINCT file_sha256) FROM provenance_log WHERE batch_id=?", (batch_id,)
         ).fetchone()[0]
 
 def iter_all_rows():
+    """Every row, oldest first — used for CSV export and hash-chain verification."""
     with _connect() as conn:
         conn.row_factory = sqlite3.Row
         return [dict(r) for r in conn.execute("SELECT * FROM provenance_log ORDER BY id ASC")]

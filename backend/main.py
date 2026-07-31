@@ -28,6 +28,7 @@ load_dotenv()
 
 
 class _JsonLogFormatter(logging.Formatter):
+    """Renders each log record as a single JSON line, tagged with the request ID when present."""
     def format(self, record: logging.LogRecord) -> str:
         payload = {
             "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
@@ -130,6 +131,7 @@ async def metrics_endpoint():
 
 
 def _check_uploaded(filename: str, content: bytes) -> None:
+    """Reject unsupported extensions and oversized uploads before any processing happens."""
     ext = Path(filename or "").suffix.lower()
     if ext not in SUPPORTED_EXTS:
         raise HTTPException(400, f"Unsupported file type. Supported: {', '.join(sorted(SUPPORTED_EXTS))}")
@@ -282,6 +284,7 @@ async def history(limit: int = Query(default=50, le=200), offset: int = Query(de
 
 @app.get("/api/v1/history/export.csv", dependencies=[Depends(verify_api_key)])
 async def history_export_csv():
+    """Download the full audit log as CSV."""
     rows = iter_all_rows()
     buf = io.StringIO()
     fieldnames = [
@@ -301,6 +304,7 @@ async def history_export_csv():
 
 @app.get("/api/v1/history/{file_hash}", dependencies=[Depends(verify_api_key)])
 async def history_by_hash(file_hash: str):
+    """Every past check recorded for a given file's SHA-256."""
     entries = get_by_hash(file_hash)
     if not entries:
         raise HTTPException(404, "No records for this file hash.")
@@ -309,11 +313,13 @@ async def history_by_hash(file_hash: str):
 
 @app.get("/api/v1/trust-list", dependencies=[Depends(verify_api_key)])
 async def trust_list_status():
+    """Metadata for the cached trust anchor bundle: source, fetch time, anchor count, staleness."""
     return trust.status()
 
 
 @app.post("/api/v1/trust-list/refresh", dependencies=[Depends(verify_api_key)])
 async def trust_list_refresh():
+    """Re-fetch the trust anchor bundle from TRUST_LIST_URL. 400 if that env var isn't set."""
     try:
         return trust.fetch_and_cache()
     except trust.TrustListError as e:
@@ -322,6 +328,7 @@ async def trust_list_refresh():
 
 @app.post("/api/v1/trust-list/upload", dependencies=[Depends(verify_api_key)])
 async def trust_list_upload(file: UploadFile = File(...)):
+    """Cache a manually-uploaded PEM trust anchor bundle (alternative to TRUST_LIST_URL)."""
     content = await file.read()
     try:
         return trust.save_uploaded(content, source_label=f"upload:{file.filename}")
