@@ -533,11 +533,22 @@ function resetResults() {
     const el = document.getElementById(id);
     if (el) el.classList.remove('visible');
   });
-  
+
   ['cert-panel', 'timeline-panel', 'sequence-panel', 'ai-policy-panel', 'download-bar', 'batch-results-panel'].forEach(id => {
     document.getElementById(id).classList.remove('visible');
   });
-  
+
+  // Single-file-only panels are shown via inline style by showResults(), not
+  // via a CSS class, so they must be explicitly hidden here too — otherwise
+  // switching into batch mode (which never calls showResults()) leaves the
+  // previous single-file trust ring/KPI strip/evidence summary visible
+  // underneath the new batch results list.
+  document.getElementById('preview-wrapper').style.display = 'none';
+  document.getElementById('executive-panel').style.display = 'none';
+  document.querySelector('.kpi-strip').style.display = 'none';
+  document.querySelector('.metrics-row').style.display = 'none';
+  document.getElementById('json-panel-container').classList.remove('visible');
+
   document.getElementById('pg-drawer').classList.remove('visible');
   document.getElementById('json-toggle').classList.remove('open');
   document.getElementById('json-viewer').classList.remove('open');

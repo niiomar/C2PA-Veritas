@@ -7,8 +7,8 @@ Bug reports, issues, and pull requests are welcome.
 See [Quick Start](README.md#quick-start). Before submitting a PR, run:
 
 ```bash
-cd backend && pytest tests/ -v
-cd frontend && npm run build
+cd backend && pip install -r requirements-dev.txt && pytest tests/ -v
+cd frontend && npm run test && npm run build
 ```
 
 CI must pass before review. For changes to `core/extractor.py` the manifest
