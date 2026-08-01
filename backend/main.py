@@ -22,6 +22,7 @@ from core.extractor import ProvenanceReport, extract_provenance
 from core.signer import sign_media
 from core import trust
 from core import metrics
+from core import ratelimit
 
 # Global Configuration & Environment
 load_dotenv()
@@ -50,6 +51,26 @@ logger = logging.getLogger(__name__)
 VERSION = "1.0.0"
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".mp4", ".mov", ".pdf"}
 
+# Content-Security-Policy: script-src is intentionally strict (no inline
+# scripts exist in the frontend — the 8 onclick= handlers that used to require
+# it were converted to addEventListener specifically so this could hold).
+# style-src allows 'unsafe-inline' because the UI relies heavily on inline
+# style="..." attributes; that's a far smaller risk than allowing inline
+# script, since CSS alone can't execute JS.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "media-src 'self' blob:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "form-action 'self'"
+)
+
 # Security: CORS origins mapped to local development and frontend deployment ports
 CORS_ORIGINS = [o.strip() for o in os.getenv(
     "CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
@@ -64,6 +85,17 @@ async def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-A
         return
     if not x_api_key or x_api_key != API_KEY:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key.")
+
+
+async def rate_limit(request: Request):
+    """Throttle the expensive endpoints (verify/sign) per API key, or per client IP if unset."""
+    client_id = request.headers.get("x-api-key") or (request.client.host if request.client else "unknown")
+    if not ratelimit.check(client_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please slow down.",
+            headers={"Retry-After": str(ratelimit.RATE_LIMIT_WINDOW_SEC)},
+        )
 
 # Application Initialization
 @asynccontextmanager
@@ -105,6 +137,10 @@ async def request_logging_middleware(request: Request, call_next):
         extra={"request_id": request_id},
     )
     response.headers["X-Request-ID"] = request_id
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
     return response
 
 
@@ -185,7 +221,7 @@ def _verify_single(content: bytes, filename: str, trust_anchors: str | None, use
     return result
 
 # API Routing: Core Forensic Verification
-@app.post("/api/v1/verify", dependencies=[Depends(verify_api_key)])
+@app.post("/api/v1/verify", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
 async def verify(
     file: UploadFile = File(...),
     trust_anchors: str | None = Form(default=None, description="PEM-encoded trust anchors (optional)"),
@@ -200,7 +236,7 @@ async def verify(
     return _verify_single(content, file.filename or "upload", trust_anchors, use_trust_list)
 
 
-@app.post("/api/v1/verify/batch", dependencies=[Depends(verify_api_key)])
+@app.post("/api/v1/verify/batch", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
 async def verify_batch(
     files: list[UploadFile] = File(...),
     trust_anchors: str | None = Form(default=None),
@@ -220,7 +256,7 @@ async def verify_batch(
     return {"results": results, "count": len(results)}
 
 # API Routing: Cryptographic Signing
-@app.post("/api/v1/sign", dependencies=[Depends(verify_api_key)])
+@app.post("/api/v1/sign", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
 async def sign(
     file:            UploadFile = File(...),
     action:          str        = Form(default="c2pa.created"),
@@ -235,11 +271,10 @@ async def sign(
     Injects a C2PA manifest and signs the media using a local development certificate.
     Returns the secured asset as a direct binary download.
     """
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in SUPPORTED_EXTS:
-        raise HTTPException(400, f"Unsupported file type.")
-
     content = await file.read()
+    _check_uploaded(file.filename or "", content)
+    ext = Path(file.filename or "").suffix.lower()
+
     logger.info(f"Signing: {file.filename}")
     metrics.incr("veritas_sign_total")
 
@@ -330,6 +365,8 @@ async def trust_list_refresh():
 async def trust_list_upload(file: UploadFile = File(...)):
     """Cache a manually-uploaded PEM trust anchor bundle (alternative to TRUST_LIST_URL)."""
     content = await file.read()
+    if len(content) > 1 * 1024 * 1024:
+        raise HTTPException(413, "Trust bundle too large. Maximum is 1MB.")
     try:
         return trust.save_uploaded(content, source_label=f"upload:{file.filename}")
     except trust.TrustListError as e:

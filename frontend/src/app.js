@@ -47,6 +47,19 @@ const previewImg   = document.getElementById('preview-img');
 const videoPreview = document.getElementById('video-preview');
 const batchModeChk = document.getElementById('batch-mode');
 
+// Dismiss buttons on warning banners (moved off inline onclick= so a strict
+// script-src CSP can be enforced without an 'unsafe-inline' carve-out).
+document.querySelectorAll('.banner-close').forEach(btn => {
+  btn.addEventListener('click', () => btn.parentElement.classList.remove('visible'));
+});
+
+// Copy-SHA button is re-created on every scan (innerHTML), so it's wired via
+// delegation on a static ancestor rather than addEventListener at render time.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.copy-btn');
+  if (btn && btn.dataset.sha) navigator.clipboard.writeText(btn.dataset.sha);
+});
+
 // Strict Forensic Date Formatter
 // Forces all timestamps into a standard, readable chronological format
 function formatDateTime(isoString) {
@@ -418,7 +431,7 @@ function renderVerdict(d) {
   const fullSha = d.file_sha256 || '';
   if (fullSha) {
     const shortSha = fullSha.slice(0, 16);
-    document.getElementById('sum-sha').innerHTML = `${shortSha} <button class="copy-btn" onclick="navigator.clipboard.writeText('${fullSha}')" title="Copy Full SHA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>`;
+    document.getElementById('sum-sha').innerHTML = `${shortSha} <button class="copy-btn" data-sha="${fullSha}" title="Copy Full SHA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>`;
   } else {
     document.getElementById('sum-sha').textContent = 'None';
   }

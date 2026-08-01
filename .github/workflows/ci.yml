@@ -21,8 +21,25 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install deps
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
       - name: Compile check
-        run: python -m py_compile main.py core/extractor.py core/signer.py core/audit.py
+        run: python -m py_compile main.py core/extractor.py core/signer.py core/audit.py core/trust.py core/metrics.py
       - name: Tests
         run: python -m pytest tests/ -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        run: npm ci
+      - name: Build
+        run: npm run build
