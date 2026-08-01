@@ -25,7 +25,7 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
       - name: Compile check
-        run: python -m py_compile main.py core/extractor.py core/signer.py core/audit.py core/trust.py core/metrics.py
+        run: python -m py_compile main.py core/extractor.py core/signer.py core/audit.py core/trust.py core/metrics.py core/ratelimit.py
       - name: Tests
         run: python -m pytest tests/ -v
 
@@ -41,5 +41,7 @@ jobs:
           node-version: "20"
       - name: Install deps
         run: npm ci
+      - name: Test
+        run: npm run test
       - name: Build
         run: npm run build
