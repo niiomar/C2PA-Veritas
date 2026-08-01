@@ -16,5 +16,8 @@ export default defineConfig({
     outDir: '../backend/static',
     emptyOutDir: true,
     minify: 'esbuild',
+  },
+  test: {
+    environment: 'jsdom',
   }
 });

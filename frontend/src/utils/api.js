@@ -87,3 +87,36 @@ export async function exportHistoryCsv() {
   if (!res.ok) throw new Error('Export failed.');
   return res.blob();
 }
+
+// Cached trust-anchor bundle metadata: source, fetch time, anchor count, staleness.
+export async function fetchTrustListStatus() {
+  const res = await fetch('/api/v1/trust-list', { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch trust list status.');
+  return res.json();
+}
+
+// Cache a manually-uploaded PEM trust anchor bundle.
+export async function uploadTrustList(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch('/api/v1/trust-list/upload', {
+    method: 'POST', body: fd, headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.detail || 'Trust list upload failed.');
+  }
+  return res.json();
+}
+
+// Re-fetch the trust anchor bundle from the operator-configured TRUST_LIST_URL.
+export async function refreshTrustList() {
+  const res = await fetch('/api/v1/trust-list/refresh', {
+    method: 'POST', headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.detail || 'Trust list refresh failed.');
+  }
+  return res.json();
+}

@@ -55,6 +55,15 @@ export function renderSidebar() {
         <span>Use cached trust list</span>
       </div>
 
+      <div id="trust-list-panel" class="field-group" style="margin-bottom:14px;">
+        <div id="trust-list-status" style="font-size:10px; color:var(--text-dim); font-family:var(--mono);">Loading trust list status…</div>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button class="clear-btn" id="trust-list-refresh-btn" style="flex:1;">REFRESH</button>
+          <button class="clear-btn" id="trust-list-upload-btn" style="flex:1;">UPLOAD PEM</button>
+        </div>
+        <input type="file" id="trust-list-file-input" accept=".pem,application/x-pem-file" style="display:none;">
+      </div>
+
       <div class="toggle-row" id="batch-mode-toggle-row">
         <label class="toggle"><input type="checkbox" id="batch-mode"><span class="toggle-slider"></span></label>
         <span>Batch mode (multi-file)</span>
