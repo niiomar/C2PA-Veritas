@@ -31,6 +31,8 @@
 - [Related Projects](#related-projects)
 - [License](#license)
 
+See also: [CHANGELOG.md](CHANGELOG.md)
+
 ---
 
 ## Overview
@@ -90,8 +92,9 @@ C2PA is an open standard backed by Adobe, Microsoft, BBC, Sony, and OpenAI. Cont
 - **Rate limiting** — per-API-key (or per-IP) sliding-window limits on the expensive endpoints
 - **Security headers** — a real `Content-Security-Policy` (`script-src 'self'`, no inline-script exceptions), `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` on every response
 - **Prometheus metrics** — request/verification counters at `/metrics`
-- **REST API** — `/verify`, `/verify/batch`, `/sign`, `/history` endpoints with optional API key auth
+- **REST API** — `/verify`, `/verify/batch`, `/sign`, `/history` endpoints with optional API key auth, auto-documented at `/docs` and `/redoc`
 - **CLI tool** — `python scripts/demo_verify.py image.jpg` with no server required
+- **Linted CI** — `ruff` (backend) and `eslint` (frontend), both enforced on every push/PR alongside the test suites
 
 ## How It Works
 
@@ -205,19 +208,22 @@ npm run dev                 # → http://localhost:3000, proxies /api to :8000
 ## Testing
 
 ```bash
-# Backend — unit tests (extractor, signer, audit, trust, metrics) +
-# route-level tests against the real FastAPI app via TestClient
+# Backend — lint (ruff), then unit tests (extractor, signer, audit, trust,
+# metrics) + route-level tests against the real FastAPI app via TestClient
 cd backend
 pip install -r requirements-dev.txt
+ruff check .
 pytest tests/ -v
 
-# Frontend — vitest + jsdom: pure-function tests (escape.js, format.js) and
-# DOM-rendering tests for the security-sensitive render/*.js modules
+# Frontend — lint (ESLint), then vitest + jsdom: pure-function tests
+# (escape.js, format.js) and DOM-rendering tests for the security-sensitive
+# render/*.js modules
 cd frontend
+npm run lint
 npm run test
 ```
 
-Both suites run in CI (`.github/workflows/ci.yml`) on every push and pull request against `main`, alongside a `py_compile` check on every backend module and a production `npm run build`.
+Both suites — lint included — run in CI (`.github/workflows/ci.yml`) on every push and pull request against `main`, alongside a `py_compile` check on every backend module and a production `npm run build`. `ruff.toml` and `eslint.config.js` are both deliberately configured to catch real bugs (unused imports, undefined refs, unsafe exception handling) without fighting the codebase's aligned-assignment formatting style — neither enforces whitespace/formatting rules.
 
 ## CLI Demo (no server required)
 
@@ -239,9 +245,11 @@ cp frontend/.env.example frontend/.env
 docker compose up --build
 ```
 
-The container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and `no-new-privileges` set — see `docker-compose.yml`.
+The container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and `no-new-privileges` set — see `docker-compose.yml`. The audit log and trust-list cache are forced under `/app/data` (the only directory writable by that non-root user), which `docker-compose.yml` volume-mounts to `./data` on the host, so they survive `docker compose down`/`up` — a plain `.env` copy alone won't relocate them, that redirection happens in the Dockerfile/compose file regardless of what `AUDIT_DB_PATH` says locally. `.dockerignore` keeps `.env`, `venv/`, and `node_modules/` out of the build context entirely, so a local `backend/.env` never ends up baked into an image layer.
 
 ## API Reference
+
+FastAPI auto-generates interactive docs for every endpoint below — **Swagger UI at `/docs`, ReDoc at `/redoc`** — with live request/response schemas, no extra setup required.
 
 All endpoints except `/health` and `/metrics` require an `X-API-KEY` header when `API_KEY` is set in `backend/.env`. `/verify`, `/verify/batch`, and `/sign` are additionally rate-limited (see [Configuration](#configuration)).
 
@@ -325,7 +333,8 @@ C2PA-Veritas/
 │   │   ├── metrics.py           # In-memory counters for /metrics
 │   │   └── ratelimit.py         # In-memory sliding-window rate limiter
 │   ├── requirements.txt
-│   ├── requirements-dev.txt     # + httpx, for FastAPI's TestClient
+│   ├── requirements-dev.txt     # + httpx (TestClient), ruff (lint)
+│   ├── ruff.toml                # lint-only config — no whitespace/format rules
 │   ├── .env.example
 │   ├── static/                  # Vite build output (generated — not tracked in git)
 │   └── tests/
@@ -346,16 +355,24 @@ C2PA-Veritas/
 │   ├── index.html
 │   ├── .env.example
 │   ├── package.json
+│   ├── eslint.config.js         # lint-only config — no whitespace/format rules
 │   └── vite.config.js           # builds to ../backend/static; test config for vitest
 ├── scripts/
 │   └── demo_verify.py           # CLI verification tool
 ├── docs/screenshots/             # README screenshots
-├── .github/workflows/ci.yml     # backend (pytest) + frontend (vitest, build) jobs
+├── .github/
+│   ├── workflows/ci.yml         # backend (ruff, pytest) + frontend (eslint, vitest, build)
+│   ├── dependabot.yml           # weekly pip/npm/github-actions update checks
+│   ├── CODEOWNERS
+│   ├── pull_request_template.md
+│   └── ISSUE_TEMPLATE/
 ├── .gitignore
+├── .dockerignore                # keeps .env/venv/node_modules out of build context
 ├── Dockerfile
 ├── docker-compose.yml
 ├── CONTRIBUTING.md
 ├── SECURITY.md
+├── CHANGELOG.md
 └── LICENSE
 ```
 
@@ -369,7 +386,7 @@ C2PA-Veritas/
 
 ## Contributing
 
-Bug reports, issues, and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the setup and pre-PR checklist (tests, build, `py_compile`).
+Bug reports, issues, and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the setup and pre-PR checklist (lint, tests, build, `py_compile`). Issue templates and a PR template are set up under `.github/`; Dependabot checks for dependency updates weekly.
 
 ## Related Projects
 

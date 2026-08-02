@@ -10,11 +10,11 @@ Uses the official c2pa-python SDK (c2pa-python >= 0.5.0).
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
 import c2pa
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,6 @@ def extract_provenance(
         and a flattened edit timeline.
     """
     import io
-    import hashlib
 
     ext        = Path(filename).suffix.lower().lstrip(".")
     media_type = _ext_to_mime(ext)
@@ -310,7 +309,7 @@ def _build_signal(
     if active:
         issuer     = active.issuer or "Unknown issuer"
         edit_count = len(timeline)
-        actions    = set(a.action for a in timeline)
+        actions    = {a.action for a in timeline}
         ai_flag    = " AI-generated content detected." if any("c2pa.created" in a and "Trained" in str(a) for a in timeline) else ""
         return (f"Valid C2PA signature from {issuer}. "
                 f"{edit_count} action(s) in edit history: {', '.join(sorted(actions))}.{ai_flag}")

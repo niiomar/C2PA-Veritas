@@ -26,6 +26,8 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Compile check
         run: python -m py_compile main.py core/extractor.py core/signer.py core/audit.py core/trust.py core/metrics.py core/ratelimit.py
+      - name: Lint
+        run: ruff check .
       - name: Tests
         run: python -m pytest tests/ -v
 
@@ -41,6 +43,8 @@ jobs:
           node-version: "20"
       - name: Install deps
         run: npm ci
+      - name: Lint
+        run: npm run lint
       - name: Test
         run: npm run test
       - name: Build

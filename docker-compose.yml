@@ -9,6 +9,13 @@ services:
       - "127.0.0.1:8000:8000"
     env_file:
       - backend/.env
+    environment:
+      # Force these under /app/data regardless of what backend/.env sets —
+      # env_file values would otherwise override the image's own correct
+      # defaults, since backend/.env.example's relative-path default is
+      # meant for local (non-Docker) development, not this container.
+      AUDIT_DB_PATH: /app/data/audit_log.db
+      TRUST_LIST_CACHE_PATH: /app/data/trust_list_cache.pem
     volumes:
       - ./data:/app/data
     restart: unless-stopped

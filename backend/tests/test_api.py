@@ -5,9 +5,10 @@ only ever call the core functions directly, never through the actual app.
 """
 import os
 
+from fastapi.testclient import TestClient
+
 import main
 from core import ratelimit
-from fastapi.testclient import TestClient
 
 client = TestClient(main.app)
 AUTH = {"X-API-KEY": os.environ["API_KEY"]}

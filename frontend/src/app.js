@@ -3,7 +3,7 @@ import { renderSidebar }   from './components/sidebar.js';
 import { renderWorkspace } from './components/workspace.js';
 import { updateHistory }   from './components/history.js';
 import { verifyFile, signFile, verifyBatch, exportHistoryCsv, fetchHistory, fetchTrustListStatus, uploadTrustList, refreshTrustList } from './utils/api.js';
-import { escapeHtml, escapeHtmlKeepQuotes } from './utils/escape.js';
+import { escapeHtml } from './utils/escape.js';
 import { formatDateTime } from './utils/format.js';
 import { renderVerdict }        from './render/verdict.js';
 import { renderMetrics }        from './render/metrics.js';
@@ -144,7 +144,7 @@ async function refreshTrustListStatusDisplay() {
       const staleness = s.stale ? ' (stale)' : '';
       el.textContent = `${s.anchor_count} anchor${s.anchor_count === 1 ? '' : 's'} cached from ${s.source}${staleness}`;
     }
-  } catch (err) {
+  } catch {
     el.textContent = 'Failed to load trust list status.';
   }
 }
@@ -432,7 +432,7 @@ document.getElementById('json-copy-btn').addEventListener('click', (e) => {
   }
 });
 
-document.getElementById('json-dl-btn').addEventListener('click', (e) => {
+document.getElementById('json-dl-btn').addEventListener('click', () => {
   if(window.__currentRawJson) {
       const blob = new Blob([window.__currentRawJson], {type: 'application/json'});
       const url = URL.createObjectURL(blob);

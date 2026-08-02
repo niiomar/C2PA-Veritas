@@ -1,0 +1,31 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact request/command if possible (e.g. the curl call to /api/v1/verify, or the CLI invocation).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: How are you running C2PA-Veritas?
+      placeholder: "e.g. Docker (docker compose up), local dev (uvicorn --reload), CLI only"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend logs are JSON lines — paste the ones around the failure. Redact any API keys or file contents first.
+      render: shell

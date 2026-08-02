@@ -57,7 +57,7 @@ def fetch_and_cache(url: str | None = None) -> dict:
         with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT_SEC) as resp:
             pem_text = resp.read().decode("utf-8", errors="replace")
     except (urllib.error.URLError, TimeoutError) as e:
-        raise TrustListError(f"Failed to fetch trust list from {target}: {e}")
+        raise TrustListError(f"Failed to fetch trust list from {target}: {e}") from e
 
     if _PEM_MARKER not in pem_text:
         raise TrustListError("Fetched content does not look like a PEM certificate bundle.")

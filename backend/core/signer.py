@@ -4,11 +4,12 @@ C2PA Manifest Signer
 Signs media files with a C2PA manifest using a provided (or auto-generated
 self-signed) certificate and private key.
 """
+import datetime
 import io
 import json
 import logging
-import datetime
 from pathlib import Path
+
 import c2pa
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -228,9 +229,12 @@ def _make_sign_fn(key_pem: bytes):
     return sign
 
 def _ext_to_mime(ext: str) -> str:
+    # Must cover every extension in main.py's SUPPORTED_EXTS — a gap here
+    # means /sign silently falls back to application/octet-stream instead
+    # of the file's real MIME type, which the SDK can reject or mishandle.
     return {
         "jpg": "image/jpeg", "jpeg": "image/jpeg",
-        "png": "image/png",  "webp": "image/webp",
+        "png": "image/png",  "webp": "image/webp", "avif": "image/avif",
         "mp4": "video/mp4",  "mov":  "video/quicktime",
         "pdf": "application/pdf",
     }.get(ext, "application/octet-stream")

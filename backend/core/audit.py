@@ -8,10 +8,13 @@ This is best-effort tamper *evidence* appropriate for a single SQLite file on
 one host — it is not a distributed-ledger-grade guarantee.
 """
 import hashlib
+import logging
 import os
 import sqlite3
 import time
 from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
 
 AUDIT_DB_PATH = os.getenv("AUDIT_DB_PATH", "audit_log.db")
 
@@ -97,8 +100,10 @@ def log_check(file_bytes: bytes, filename: str, report, processing_sec: float, b
             )
             conn.commit()
         return sha
-    except Exception as e:
-        print(f"[Audit] Failed to log: {e}")
+    except Exception:
+        # the request it's trying to record. Routed through the module
+        # logger (not print()) so it still reaches main.py's JSON log output.
+        logger.exception("Failed to write audit log entry")
         return None
 
 def get_recent(limit: int = 50, offset: int = 0) -> list[dict]:

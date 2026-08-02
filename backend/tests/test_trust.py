@@ -5,6 +5,8 @@ must never depend on reaching a real URL (offline/CI-safe, no flakiness).
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from core import trust
 
 _SAMPLE_PEM = (
@@ -31,11 +33,8 @@ def test_save_uploaded_valid_pem():
 
 
 def test_save_uploaded_rejects_non_pem_content():
-    try:
+    with pytest.raises(trust.TrustListError):
         trust.save_uploaded(b"just some random bytes, not a certificate", "bad-upload")
-        assert False, "expected TrustListError"
-    except trust.TrustListError:
-        pass
 
 
 def test_is_stale():
@@ -56,11 +55,8 @@ def test_status_reflects_cache_state():
 def test_fetch_and_cache_without_url_configured_raises():
     # conftest.py sets TRUST_LIST_URL="" — no URL given, none configured either.
     assert trust.TRUST_LIST_URL == ""
-    try:
+    with pytest.raises(trust.TrustListError, match="not configured"):
         trust.fetch_and_cache()
-        assert False, "expected TrustListError"
-    except trust.TrustListError as e:
-        assert "not configured" in str(e)
 
 
 def test_fetch_and_cache_success_with_mocked_network():
@@ -82,9 +78,6 @@ def test_fetch_and_cache_rejects_non_pem_response():
     fake_response.__enter__.return_value = fake_response
     fake_response.__exit__.return_value = False
 
-    with patch("core.trust.urllib.request.urlopen", return_value=fake_response):
-        try:
-            trust.fetch_and_cache(url="https://example.invalid/not-a-cert")
-            assert False, "expected TrustListError"
-        except trust.TrustListError:
-            pass
+    with patch("core.trust.urllib.request.urlopen", return_value=fake_response), \
+         pytest.raises(trust.TrustListError):
+        trust.fetch_and_cache(url="https://example.invalid/not-a-cert")

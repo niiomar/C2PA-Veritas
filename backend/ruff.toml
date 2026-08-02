@@ -1,0 +1,16 @@
+# Ruff's default selection (E4/E7/E9/F) already excludes the whitespace/
+# alignment pycodestyle categories (E1/E2/E3/E5) — this codebase deliberately
+# aligns assignments in columns throughout, so this config only adds
+# import-sorting (I) and bug-pattern checks (B) on top of that default,
+# never anything whitespace-related.
+target-version = "py310"
+line-length = 120
+
+[lint]
+extend-select = ["I", "B"]
+
+[lint.flake8-bugbear]
+# FastAPI's dependency-injection pattern requires File(...)/Form(...)/Query(...)
+# as literal argument defaults — that's the framework's documented API, not the
+# mutable-default-argument bug B008 is designed to catch elsewhere.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Query", "fastapi.Header"]

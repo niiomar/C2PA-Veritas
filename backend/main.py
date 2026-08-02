@@ -11,18 +11,26 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, Header, status
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from core.audit import count_all, count_batch_members, get_by_hash, get_recent, iter_all_rows, log_check, sha256_of_bytes, verify_chain
+from core import metrics, ratelimit, trust
+from core.audit import (
+    count_all,
+    count_batch_members,
+    get_by_hash,
+    get_recent,
+    iter_all_rows,
+    log_check,
+    sha256_of_bytes,
+    verify_chain,
+)
 from core.extractor import ProvenanceReport, extract_provenance
 from core.signer import sign_media
-from core import trust
-from core import metrics
-from core import ratelimit
 
 # Global Configuration & Environment
 load_dotenv()
@@ -294,7 +302,7 @@ async def sign(
         )
     except Exception as e:
         logger.exception("Signing failed")
-        raise HTTPException(500, f"Signing failed: {str(e)}")
+        raise HTTPException(500, f"Signing failed: {e!s}") from e
 
     stem    = Path(file.filename or "signed").stem
     outname = f"{stem}_signed{ext}"
@@ -358,7 +366,7 @@ async def trust_list_refresh():
     try:
         return trust.fetch_and_cache()
     except trust.TrustListError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
 
 
 @app.post("/api/v1/trust-list/upload", dependencies=[Depends(verify_api_key)])
@@ -370,7 +378,7 @@ async def trust_list_upload(file: UploadFile = File(...)):
     try:
         return trust.save_uploaded(content, source_label=f"upload:{file.filename}")
     except trust.TrustListError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
 
 
 @app.get("/api/v1/audit/verify", dependencies=[Depends(verify_api_key)])
