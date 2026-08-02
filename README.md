@@ -223,7 +223,7 @@ npm run lint
 npm run test
 ```
 
-Both suites — lint included — run in CI (`.github/workflows/ci.yml`) on every push and pull request against `main`, alongside a `py_compile` check on every backend module and a production `npm run build`. `ruff.toml` and `eslint.config.js` are both deliberately configured to catch real bugs (unused imports, undefined refs, unsafe exception handling) without fighting the codebase's aligned-assignment formatting style — neither enforces whitespace/formatting rules.
+Both suites — lint included — run in CI (`.github/workflows/ci.yml`) on every push to any branch, plus every pull request against `main`, alongside a `py_compile` check on every backend module and a production `npm run build`. `ruff.toml` and `eslint.config.js` are both deliberately configured to catch real bugs (unused imports, undefined refs, unsafe exception handling) without fighting the codebase's aligned-assignment formatting style — neither enforces whitespace/formatting rules.
 
 ## CLI Demo (no server required)
 
