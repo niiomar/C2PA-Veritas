@@ -290,6 +290,7 @@ def _build_signal(
     timeline: list[ActionEntry],
     errors:   list[dict],
 ) -> str:
+    
     """Build the human-readable one-line verdict shown in the UI's summary panel."""
     if status == ProvenanceStatus.NO_MANIFEST:
         return ("No C2PA provenance data found. This file has no embedded Content Credentials. "
