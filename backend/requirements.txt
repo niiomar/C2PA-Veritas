@@ -1,6 +1,6 @@
 fastapi>=0.141.1
 uvicorn[standard]>=0.52.0
 python-multipart>=0.0.32
-python-dotenv>=1.2.2
+python-dotenv>=1.2.3
 c2pa-python>=0.37.8
 cryptography>=50.0.1
