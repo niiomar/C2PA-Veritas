@@ -1,4 +1,4 @@
 # Dev-only dependencies — not required to run the app, only to run tests/lint.
 -r requirements.txt
 httpx>=0.27.0
-ruff>=0.16.1
+ruff>=0.16.5
